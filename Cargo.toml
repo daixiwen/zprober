@@ -7,6 +7,9 @@ edition = "2024"
 eframe = "0.37.0"
 egui = "0.37.0"
 egui_tiles = "0.18.0"
-env_logger = "0.11.11"
-log = "0.4.34"
+egui_tracing = "0.3.0"
 serde = { version = "1.0.229", features = ["derive"] }
+tracing = "0.1.44"
+
+[patch.crates-io]
+egui_tracing = { git = "https://github.com/daixiwen/egui_tracing.git", branch = "egui_0.37.0" }

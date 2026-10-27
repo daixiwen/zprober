@@ -1,6 +1,5 @@
 /// Window menu bar
 
-
 pub fn menu_bar(ui: &mut egui::Ui) {
     egui::Panel::top("menu").show(ui, |ui| {
         ui.horizontal(|ui| {
