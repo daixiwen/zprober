@@ -4638,6 +4638,7 @@ dependencies = [
  "egui_tiles",
  "env_logger",
  "log",
+ "serde",
 ]
 
 [[package]]
