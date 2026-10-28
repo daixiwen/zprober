@@ -1,5 +1,4 @@
 /// Tiles and panes handling
-
 use egui_tracing::egui::Widget;
 
 /// enumeration of all pane types
@@ -65,7 +64,9 @@ impl<'a> egui_tiles::Behavior<Pane> for MyBehavior<'a> {
             Pane::Text(text) => {
                 ui.text_edit_singleline(text);
             }
-            Pane::Tracing =>  { egui_tracing::Logs::new(self.collector.clone()).ui(ui);}
+            Pane::Tracing => {
+                egui_tracing::Logs::new(self.collector.clone()).ui(ui);
+            }
         }
 
         Default::default()
@@ -73,6 +74,7 @@ impl<'a> egui_tiles::Behavior<Pane> for MyBehavior<'a> {
 }
 
 /// temporary example pane
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Settings {
     checked: bool,
 }
