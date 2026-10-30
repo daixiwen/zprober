@@ -1,32 +1,36 @@
 /// Tiles and panes handling
 use egui_tracing::egui::Widget;
 
+use crate::gui::console;
+
 /// enumeration of all pane types
 #[derive(serde::Serialize, serde::Deserialize)]
 pub enum Pane {
     Settings,
     Text(String),
     Tracing,
+    Console,
 }
 
 /// display the complete tiles tree
 pub fn tree_ui(
     ui: &mut egui::Ui,
-    tree: &mut egui_tiles::Tree<Pane>,
-    settings: &mut Settings,
-    collector: &egui_tracing::EventCollector,
+    volatile_context: &mut crate::app::ZProberVolatileContext,
+    saved_context: &mut crate::app::ZProberSavedContext,
 ) {
     let mut behavior = MyBehavior {
-        settings,
-        collector,
+        settings: &mut saved_context.settings,
+        collector: &volatile_context.collector,
+        console: &mut saved_context.console,
     };
-    tree.ui(&mut behavior, ui);
+    saved_context.tiles_tree.ui(&mut behavior, ui);
 }
 
 /// customization of tiles display
 struct MyBehavior<'a> {
     settings: &'a mut Settings,
     collector: &'a egui_tracing::EventCollector,
+    console: &'a mut console::ConsoleWindow,
 }
 
 impl<'a> egui_tiles::Behavior<Pane> for MyBehavior<'a> {
@@ -49,6 +53,7 @@ impl<'a> egui_tiles::Behavior<Pane> for MyBehavior<'a> {
             Pane::Settings => "Settings".into(),
             Pane::Text(text) => text.clone().into(),
             Pane::Tracing => "Tracing".into(),
+            Pane::Console => "TCL".into(),
         }
     }
 
@@ -66,6 +71,9 @@ impl<'a> egui_tiles::Behavior<Pane> for MyBehavior<'a> {
             }
             Pane::Tracing => {
                 egui_tracing::Logs::new(self.collector.clone()).ui(ui);
+            }
+            Pane::Console => {
+                console::console_pane(ui, self.console);
             }
         }
 
