@@ -132,19 +132,19 @@ impl eframe::App for ZProberApp {
             if let Some(tcl_command) = crate::gui::panes::tree_ui(ui, &mut self.tiles_tree, self.tcl_interpreter.context(self.context_id)) {
                 // we have a TCL command to execute
 
-                event!(Level::INFO, "evaluating TCL \"{tcl_command}\"");
+                event!(Level::INFO, tcl_command, "evaluating TCL");
                 let tcl_result = self.tcl_interpreter.eval(&tcl_command);
                 match tcl_result {
                     Ok(value) => {
                         let console = &mut self.get_context().console;
-                        event!(Level::DEBUG, "TCL result: {:?}", value);
+                        event!(Level::DEBUG, value = value.to_string(), "TCL result");
                         console.write(&value.to_string());
                         console.prompt();
                     },
                     Err(exception) => { 
                         let console = &mut self.get_context().console;
                         if exception.is_error() {
-                            event!(Level::ERROR, "TCL command \"{tcl_command}\" returned {exception:?}");
+                            event!(Level::ERROR, tcl_command, exception = exception.value().to_string(), "TCL error");
                             console.write(&format!("error: {}", exception.value()));
                         } else {
                             console.write(&exception.value().to_string());                 
