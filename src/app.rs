@@ -1,19 +1,20 @@
-use crate::gui::{self, panes};
 use egui_tracing::tracing_subscriber::layer::SubscriberExt;
 use egui_tracing::tracing_subscriber::util::SubscriberInitExt;
 use tracing::{Level, event};
 
-/// the application root class
+use crate::gui::{self, panes};
+use crate::tcl::interpreter::MsgFromTcl;
+
+/// the application root class, both persistent and non persistent
+/// data for the GUI
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct ZProberApp {
-    tcl_interpreter: molt::Interp,
-    context_id: molt::ContextID,
-    tiles_tree: egui_tiles::Tree<panes::Pane>,
+    pub tiles_tree: egui_tiles::Tree<panes::Pane>,
+    pub context: ZProberAppContext
 }
 
-/// the application context both persistent and non persistent
-/// data, that the TCL can act on
-#[derive(serde::Serialize, serde::Deserialize, Clone)]
-pub struct ZProberContext {
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct ZProberAppContext {
     pub settings: panes::Settings,
     pub console: gui::console::ConsoleWindow,
 
@@ -21,18 +22,17 @@ pub struct ZProberContext {
     pub collector: egui_tracing::EventCollector,
 
     #[serde(skip)]
-    tcl_command: Option<String>
+    tcl: crate::tcl::interpreter::Interpreter
 }
 
-/// Structure for context I/O
-#[derive(serde::Serialize, serde::Deserialize)]
-struct ZProberContextIO {
-    context_structure: ZProberContext,
-    tiles_tree: egui_tiles::Tree<panes::Pane>,
+impl ZProberAppContext {
+    pub fn execute_tcl(&self, cmd: &str) {
+        self.tcl.execute(cmd);
+    }
 }
 
 /// value for the context if no save is found on disk
-impl Default for ZProberContext {
+impl Default for ZProberAppContext {
     fn default() -> Self {
 
         // create console
@@ -40,17 +40,19 @@ impl Default for ZProberContext {
             .prompt(">> ")
             .history_size(20)
             .build();
-        ZProberContext {
+
+        ZProberAppContext {
             settings: panes::Settings::new(),
             console,
             collector : Default::default(),
-            tcl_command: None
+            tcl: Default::default()
         }
     }
 }
 
-impl Default for ZProberContextIO {
+impl Default for ZProberApp {
     fn default() -> Self {
+
         // create tiles tree
         let mut tiles = egui_tiles::Tiles::default();
 
@@ -64,23 +66,10 @@ impl Default for ZProberContextIO {
 
         let tiles_tree = egui_tiles::Tree::new(egui::Id::unique("my_tree"), root, tiles);
 
-        ZProberContextIO {
+        ZProberApp {
             tiles_tree,
-            context_structure: Default::default(),
+            context : Default::default(),
         }
-    }
-}
-
-// other methods for the context
-impl ZProberContext {
-    // register a TCL command to execute
-    pub fn register_tcl_command(&mut self, command: &str) {
-        self.tcl_command = Some(command.into());
-    }
-
-    // if a command has been registered, return it
-    pub fn get_tcl_command(&mut self) -> Option<String> {
-        self.tcl_command.take()
     }
 }
 
@@ -89,7 +78,7 @@ impl ZProberApp {
         // create the application
 
         // try to get the previous context from persistent storage
-        let context_io: ZProberContextIO = if let Some(storage) = cc.storage {
+        let app: ZProberApp = if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
         } else {
             Default::default()
@@ -97,62 +86,50 @@ impl ZProberApp {
 
         // enable the tracing subscriber to write all traces in the pane
         egui_tracing::tracing_subscriber::registry()
-            .with(context_io.context_structure.collector.clone())
+            .with(app.context.collector.clone())
             .init();
 
-        // create the TCL interpeter
-        let mut tcl_interpreter = molt::Interp::new();
-        let context_id = tcl_interpreter.save_context(context_io.context_structure);
-        ZProberApp {
-            tcl_interpreter,
-            context_id,
-            tiles_tree: context_io.tiles_tree
-        }
-    }
-
-    pub fn get_context(&mut self) -> &mut ZProberContext {
-        self.tcl_interpreter.context(self.context_id)
+        app
     }
 }
 
 impl eframe::App for ZProberApp {
-    /// called when quitting: write the context to persistent storage
+    /// called when quitting and regularly: write the context to persistent storage
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        let context_io = ZProberContextIO {
-            context_structure : self.get_context().clone(),
-            tiles_tree : self.tiles_tree.clone()
-        };
-        eframe::set_value(storage, eframe::APP_KEY, &context_io);
+        eframe::set_value(storage, eframe::APP_KEY, &self);
+    }
+
+    /// called on exit
+    fn on_exit(&mut self) {
+        // stop the TCL thread
+        self.context.tcl.quit();
     }
 
     /// draw the GUI
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        crate::gui::menu::menu_bar(ui);
-        egui::CentralPanel::default().show(ui, |ui| {
-            if let Some(tcl_command) = crate::gui::panes::tree_ui(ui, &mut self.tiles_tree, self.tcl_interpreter.context(self.context_id)) {
-                // we have a TCL command to execute
 
-                event!(Level::INFO, tcl_command, "evaluating TCL");
-                let tcl_result = self.tcl_interpreter.eval(&tcl_command);
-                match tcl_result {
-                    Ok(value) => {
-                        let console = &mut self.get_context().console;
-                        event!(Level::DEBUG, value = value.to_string(), "TCL result");
-                        console.write(&value.to_string());
-                        console.prompt();
-                    },
-                    Err(exception) => { 
-                        let console = &mut self.get_context().console;
-                        if exception.is_error() {
-                            event!(Level::ERROR, tcl_command, exception = exception.value().to_string(), "TCL error");
-                            console.write(&format!("error: {}", exception.value()));
-                        } else {
-                            console.write(&exception.value().to_string());                 
-                        }
-                        console.prompt();
-                    }
+        // check messages from the TCL thread
+        if let Some(msg) = self.context.tcl.receive() {
+            event!(Level::DEBUG, ?msg, "received message from TCL");
+            match msg {
+                MsgFromTcl::Write(msg) => {
+                    self.context.console.write(&msg);
+                },
+                MsgFromTcl::CommandOk(result) => {
+                    self.context.console.write(&result);
+                    self.context.console.prompt();
+                },
+                MsgFromTcl::CommandError(result) => {
+                    self.context.console.write(&format!("ERROR: {result}"));
+                    self.context.console.prompt();
                 }
             }
+        }
+
+        // GUI
+        crate::gui::menu::menu_bar(ui);
+        egui::CentralPanel::default().show(ui, |ui| {
+            crate::gui::panes::tree_ui(ui, &mut self.tiles_tree, &mut self.context);
         });
     }
 }

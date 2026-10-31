@@ -18,18 +18,17 @@ pub enum Pane {
 pub fn tree_ui(
     ui: &mut egui::Ui,
     tiles_tree: &mut egui_tiles::Tree<Pane>,
-    context: &mut crate::app::ZProberContext,
-) -> Option<String> {
+    context: &mut crate::app::ZProberAppContext,
+) {
     let mut behavior = MyBehavior {
         context: context,
     };
     tiles_tree.ui(&mut behavior, ui);
-    behavior.context.get_tcl_command()
 }
 
 /// customization of tiles display
 struct MyBehavior<'a> {
-    context: &'a mut crate::app::ZProberContext,
+    context: &'a mut crate::app::ZProberAppContext,
 }
 
 impl<'a> egui_tiles::Behavior<Pane> for MyBehavior<'a> {
@@ -73,7 +72,7 @@ impl<'a> egui_tiles::Behavior<Pane> for MyBehavior<'a> {
             }
             Pane::Console => {
                 if let Some(cmd) = console::console_pane(ui, &mut self.context.console) {
-                    self.context.register_tcl_command(&cmd);
+                    self.context.execute_tcl(&cmd);
                 };
             }
         }
