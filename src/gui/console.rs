@@ -23,7 +23,7 @@ pub enum ConsoleEvent {
 /// Console Window  
 ///
 ///
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
 pub struct ConsoleWindow {
     #[serde(skip)]
     pub text: String,
@@ -556,16 +556,18 @@ impl ConsoleBuilder {
     }
 }
 
-/// Handle the console inside a pane
-pub fn console_pane(ui: &mut egui::Ui, console: &mut ConsoleWindow) {
+/// Handle the console inside a pane. Return a TCL command
+/// to execute, if any
+pub fn console_pane(ui: &mut egui::Ui, console: &mut ConsoleWindow) -> Option<String> {
     let console_event = console.draw(ui);
 
     match console_event {
         ConsoleEvent::Command(cmd) => {
-            event!(Level::INFO, "received TCL command on console: {cmd}");
-            console.write(&format!("output for command {cmd}"));
-            console.prompt();
+            event!(Level::DEBUG, "from console: {cmd}");
+            Some(cmd)
         }
-        _ => {}
+        _ => {
+            None
+        }
     }
 }

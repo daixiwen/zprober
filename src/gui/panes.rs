@@ -4,7 +4,7 @@ use egui_tracing::egui::Widget;
 use crate::gui::console;
 
 /// enumeration of all pane types
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub enum Pane {
     Settings,
     Text(String),
@@ -13,24 +13,23 @@ pub enum Pane {
 }
 
 /// display the complete tiles tree
+/// returns a tcl command to execute if any has been
+/// registered during the panes exploration
 pub fn tree_ui(
     ui: &mut egui::Ui,
-    volatile_context: &mut crate::app::ZProberVolatileContext,
-    saved_context: &mut crate::app::ZProberSavedContext,
-) {
+    tiles_tree: &mut egui_tiles::Tree<Pane>,
+    context: &mut crate::app::ZProberContext,
+) -> Option<String> {
     let mut behavior = MyBehavior {
-        settings: &mut saved_context.settings,
-        collector: &volatile_context.collector,
-        console: &mut saved_context.console,
+        context: context,
     };
-    saved_context.tiles_tree.ui(&mut behavior, ui);
+    tiles_tree.ui(&mut behavior, ui);
+    behavior.context.get_tcl_command()
 }
 
 /// customization of tiles display
 struct MyBehavior<'a> {
-    settings: &'a mut Settings,
-    collector: &'a egui_tracing::EventCollector,
-    console: &'a mut console::ConsoleWindow,
+    context: &'a mut crate::app::ZProberContext,
 }
 
 impl<'a> egui_tiles::Behavior<Pane> for MyBehavior<'a> {
@@ -65,15 +64,17 @@ impl<'a> egui_tiles::Behavior<Pane> for MyBehavior<'a> {
         pane: &mut Pane,
     ) -> egui_tiles::UiResponse {
         match pane {
-            Pane::Settings => self.settings.ui(ui),
+            Pane::Settings => self.context.settings.ui(ui),
             Pane::Text(text) => {
                 ui.text_edit_singleline(text);
             }
             Pane::Tracing => {
-                egui_tracing::Logs::new(self.collector.clone()).ui(ui);
+                egui_tracing::Logs::new(self.context.collector.clone()).ui(ui);
             }
             Pane::Console => {
-                console::console_pane(ui, self.console);
+                if let Some(cmd) = console::console_pane(ui, &mut self.context.console) {
+                    self.context.register_tcl_command(&cmd);
+                };
             }
         }
 
@@ -82,7 +83,7 @@ impl<'a> egui_tiles::Behavior<Pane> for MyBehavior<'a> {
 }
 
 /// temporary example pane
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct Settings {
     checked: bool,
 }

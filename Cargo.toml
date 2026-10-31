@@ -8,6 +8,7 @@ eframe = { version = "0.37.0", features = ["persistence"] }
 egui = "0.37.0"
 egui_tiles = "0.18.0"
 egui_tracing = "0.3.0"
+molt = "0.3.1"
 serde = { version = "1.0.229", features = ["derive"] }
 tracing = "0.1.44"
 
