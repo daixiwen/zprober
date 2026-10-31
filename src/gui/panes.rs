@@ -20,9 +20,7 @@ pub fn tree_ui(
     tiles_tree: &mut egui_tiles::Tree<Pane>,
     context: &mut crate::app::ZProberAppContext,
 ) {
-    let mut behavior = MyBehavior {
-        context: context,
-    };
+    let mut behavior = MyBehavior { context: context };
     tiles_tree.ui(&mut behavior, ui);
 }
 

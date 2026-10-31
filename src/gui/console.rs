@@ -566,8 +566,6 @@ pub fn console_pane(ui: &mut egui::Ui, console: &mut ConsoleWindow) -> Option<St
             event!(Level::DEBUG, "from console: {cmd}");
             Some(cmd)
         }
-        _ => {
-            None
-        }
+        _ => None,
     }
 }

@@ -10,7 +10,7 @@ use crate::tcl::interpreter::MsgFromTcl;
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct ZProberApp {
     pub tiles_tree: egui_tiles::Tree<panes::Pane>,
-    pub context: ZProberAppContext
+    pub context: ZProberAppContext,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -22,7 +22,7 @@ pub struct ZProberAppContext {
     pub collector: egui_tracing::EventCollector,
 
     #[serde(skip)]
-    tcl: crate::tcl::interpreter::Interpreter
+    tcl: crate::tcl::interpreter::Interpreter,
 }
 
 impl ZProberAppContext {
@@ -34,7 +34,6 @@ impl ZProberAppContext {
 /// value for the context if no save is found on disk
 impl Default for ZProberAppContext {
     fn default() -> Self {
-
         // create console
         let console = gui::console::ConsoleBuilder::new()
             .prompt(">> ")
@@ -44,15 +43,14 @@ impl Default for ZProberAppContext {
         ZProberAppContext {
             settings: panes::Settings::new(),
             console,
-            collector : Default::default(),
-            tcl: Default::default()
+            collector: Default::default(),
+            tcl: Default::default(),
         }
     }
 }
 
 impl Default for ZProberApp {
     fn default() -> Self {
-
         // create tiles tree
         let mut tiles = egui_tiles::Tiles::default();
 
@@ -68,7 +66,7 @@ impl Default for ZProberApp {
 
         ZProberApp {
             tiles_tree,
-            context : Default::default(),
+            context: Default::default(),
         }
     }
 }
@@ -89,6 +87,7 @@ impl ZProberApp {
             .with(app.context.collector.clone())
             .init();
 
+        app.context.tcl.update_egui_context(cc.egui_ctx.clone());
         app
     }
 }
@@ -107,18 +106,17 @@ impl eframe::App for ZProberApp {
 
     /// draw the GUI
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-
         // check messages from the TCL thread
         if let Some(msg) = self.context.tcl.receive() {
             event!(Level::DEBUG, ?msg, "received message from TCL");
             match msg {
                 MsgFromTcl::Write(msg) => {
                     self.context.console.write(&msg);
-                },
+                }
                 MsgFromTcl::CommandOk(result) => {
                     self.context.console.write(&result);
                     self.context.console.prompt();
-                },
+                }
                 MsgFromTcl::CommandError(result) => {
                     self.context.console.write(&format!("ERROR: {result}"));
                     self.context.console.prompt();

@@ -5,18 +5,26 @@ use tracing::{Level, event};
 use crate::tcl::interpreter::MsgFromTcl;
 
 pub struct Data {
-    msg_sender : mpsc::Sender<MsgFromTcl>
+    msg_sender: mpsc::Sender<MsgFromTcl>,
+    pub egui_ctx: Option<egui::Context>,
 }
 
 impl Data {
-    pub fn new(msg_sender : mpsc::Sender<MsgFromTcl>) -> Self {
-        Data{msg_sender}
+    pub fn new(msg_sender: mpsc::Sender<MsgFromTcl>) -> Self {
+        Data {
+            msg_sender,
+            egui_ctx: None,
+        }
     }
 
-    fn send_msg(&self, msg : MsgFromTcl) {
+    fn send_msg(&self, msg: MsgFromTcl) {
         event!(Level::DEBUG, ?msg, "sending message to GUI");
         if let Err(e) = self.msg_sender.send(msg) {
             event!(Level::ERROR, ?e, "Error sending message to GUI");
+        }
+        if let Some(ctx) = &self.egui_ctx {
+            event!(Level::DEBUG, "requesting repaint");
+            ctx.request_repaint();
         }
     }
 
