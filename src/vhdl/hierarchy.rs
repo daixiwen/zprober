@@ -82,7 +82,7 @@ impl Hierarchy {
     /// Parses every source file in every library of the project using
     /// `vhdl_lang::VHDLParser`, and records which entity instantiates which.
     pub fn build(project: &Project) -> Result<Self, String> {
-        let parser = VHDLParser::new(project.standard().to_vhdl_lang());
+        let parser = VHDLParser::new(project.standard());
         let mut units = Vec::new();
         let mut instantiations = Vec::new();
 

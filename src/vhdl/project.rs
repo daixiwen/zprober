@@ -9,6 +9,8 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use vhdl_lang::VHDLStandard;
+
 /// A VHDL library, holding a name and a list of source files
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Library {
@@ -32,25 +34,6 @@ impl Library {
         self.files.push(file.into());
     }
 }
-/// VHDL standard version, mirroring the `standard` key in `vhdl_ls.toml`
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum VhdlStandard {
-    Vhdl1993,
-    #[default]
-    Vhdl2008,
-    Vhdl2019,
-}
-
-impl VhdlStandard {
-    /// Convert to the corresponding `vhdl_lang::VHDLStandard`
-    pub fn to_vhdl_lang(&self) -> vhdl_lang::VHDLStandard {
-        match self {
-            VhdlStandard::Vhdl1993 => vhdl_lang::VHDLStandard::VHDL1993,
-            VhdlStandard::Vhdl2008 => vhdl_lang::VHDLStandard::VHDL2008,
-            VhdlStandard::Vhdl2019 => vhdl_lang::VHDLStandard::VHDL2019,
-        }
-    }
-}
 /// A VHDL project, made of one or several libraries
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Project {
@@ -59,7 +42,7 @@ pub struct Project {
     /// The root directory of the project, used to resolve relative paths
     root_dir: PathBuf,
     /// The VHDL standard to use for parsing
-    standard: VhdlStandard,
+    standard: VHDLStandard,
 }
 
 impl Project {
@@ -68,7 +51,7 @@ impl Project {
         Self {
             libraries: BTreeMap::new(),
             root_dir: root_dir.into(),
-            standard: VhdlStandard::default(),
+            standard: VHDLStandard::default(),
         }
     }
 
@@ -90,10 +73,10 @@ impl Project {
     /// Build a project from a parsed `vhdl_ls.toml` configuration
     fn from_toml_config(config: TomlConfig, root_dir: PathBuf) -> Result<Self, String> {
         let standard = match config.standard.as_deref() {
-            None => VhdlStandard::default(),
-            Some("1993") => VhdlStandard::Vhdl1993,
-            Some("2008") => VhdlStandard::Vhdl2008,
-            Some("2019") => VhdlStandard::Vhdl2019,
+            None => VHDLStandard::default(),
+            Some("1993") => VHDLStandard::VHDL1993,
+            Some("2008") => VHDLStandard::VHDL2008,
+            Some("2019") => VHDLStandard::VHDL2019,
             Some(other) => {
                 return Err(format!(
                     "Invalid VHDL standard '{}' in configuration (expected '1993', '2008' or '2019')",
@@ -136,12 +119,12 @@ impl Project {
     }
 
     /// Set the VHDL standard to use for parsing
-    pub fn set_standard(&mut self, standard: VhdlStandard) {
+    pub fn set_standard(&mut self, standard: VHDLStandard) {
         self.standard = standard;
     }
 
     /// Get the VHDL standard used for parsing
-    pub fn standard(&self) -> VhdlStandard {
+    pub fn standard(&self) -> VHDLStandard {
         self.standard
     }
 
@@ -237,7 +220,7 @@ mod tests {
     use std::path::PathBuf;
 
     fn example_dir() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("example/neorv32-main/rtl")
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("example")
     }
 
     #[test]
@@ -264,6 +247,7 @@ lib2.files = ['src/lib2/*.vhd', 'src/common/*.vhd']
         assert!(result.is_err());
     }
 
+
     #[test]
     fn test_load_example_project() {
         let example_dir = example_dir();
@@ -278,12 +262,12 @@ lib2.files = ['src/lib2/*.vhd', 'src/common/*.vhd']
         let lib = project.library("neorv32").unwrap();
         assert!(lib.files.len() > 40, "Expected ~61 files in neorv32 library");
         assert!(project.num_files() > 40);
-        assert_eq!(project.standard(), VhdlStandard::Vhdl2008);
+        assert_eq!(project.standard(), VHDLStandard::VHDL2008);
     }
 
     #[test]
     fn test_expand_pattern() {
-        let pattern = example_dir().join("core/*.vhd");
+        let pattern = example_dir().join("neorv32/rtl/core/*.vhd");
         let files = expand_pattern(&pattern);
         assert!(files.len() > 40);
         assert!(files.iter().all(|f| f.extension().unwrap() == "vhd"));
