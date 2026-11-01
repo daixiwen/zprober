@@ -235,8 +235,8 @@ fn process_design_file(
 ) {
     for (_, design_unit) in &design_file.design_units {
         match design_unit {
-            AnyDesignUnit::Primary(primary) => match primary {
-                AnyPrimaryUnit::Entity(EntityDeclaration { ident, .. }) => {
+            AnyDesignUnit::Primary(primary) => {
+                if let AnyPrimaryUnit::Entity(EntityDeclaration { ident, .. }) = primary {
                     units.push(DesignUnit {
                         library: library.to_string(),
                         file: file.to_path_buf(),
@@ -245,15 +245,16 @@ fn process_design_file(
                         entity: None,
                     });
                 }
-                _ => {} // Configurations, packages, contexts: not relevant for the tree
-            },
-            AnyDesignUnit::Secondary(secondary) => match secondary {
-                AnySecondaryUnit::Architecture(ArchitectureBody {
+            }
+
+            AnyDesignUnit::Secondary(secondary) => {
+                if let AnySecondaryUnit::Architecture(ArchitectureBody {
                     ident,
                     entity_name,
                     statements,
                     ..
-                }) => {
+                }) = secondary
+                {
                     let entity_name = entity_name.item.to_string();
                     units.push(DesignUnit {
                         library: library.to_string(),
@@ -270,8 +271,7 @@ fn process_design_file(
                     };
                     walker.walk_statements(statements);
                 }
-                _ => {} // Package bodies: not relevant for the tree
-            },
+            }
         }
     }
 }

@@ -104,6 +104,8 @@ impl Interpreter {
         if let Some(thread_handle) = self.thread_handle.take() {
             if let Err(e) = thread_handle.join() {
                 event!(Level::ERROR, ?e, "Error exiting TCL interpreter thread")
+            } else {
+                event!(Level::DEBUG, "thread exited");
             }
         }
     }
