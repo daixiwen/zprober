@@ -81,7 +81,7 @@ impl Project {
                 return Err(format!(
                     "Invalid VHDL standard '{}' in configuration (expected '1993', '2008' or '2019')",
                     other
-                ))
+                ));
             }
         };
 
@@ -247,7 +247,6 @@ lib2.files = ['src/lib2/*.vhd', 'src/common/*.vhd']
         assert!(result.is_err());
     }
 
-
     #[test]
     fn test_load_example_project() {
         let example_dir = example_dir();
@@ -260,7 +259,10 @@ lib2.files = ['src/lib2/*.vhd', 'src/common/*.vhd']
         let project = Project::from_vhdl_ls_toml(&toml_file).unwrap();
         assert_eq!(project.libraries().count(), 1);
         let lib = project.library("neorv32").unwrap();
-        assert!(lib.files.len() > 40, "Expected ~61 files in neorv32 library");
+        assert!(
+            lib.files.len() > 40,
+            "Expected ~61 files in neorv32 library"
+        );
         assert!(project.num_files() > 40);
         assert_eq!(project.standard(), VHDLStandard::VHDL2008);
     }
@@ -284,4 +286,3 @@ lib2.files = ['src/lib2/*.vhd', 'src/common/*.vhd']
         assert_eq!(project.library("lib2").unwrap().files.len(), 1);
     }
 }
-

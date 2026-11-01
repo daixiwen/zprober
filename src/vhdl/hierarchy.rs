@@ -5,7 +5,7 @@
 //! every design unit in a project, records which entity instantiates which,
 //! and identifies the top-level entities.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use vhdl_lang::ast::{
@@ -16,6 +16,54 @@ use vhdl_lang::ast::{
 use vhdl_lang::{NullDiagnostics, VHDLParser};
 
 use crate::vhdl::project::Project;
+
+/// A library-qualified name of a design unit, e.g. `lib.my_module`
+///
+/// VHDL identifiers are case-insensitive, so equality (and hashing) is
+/// case-insensitive too.
+#[derive(Debug, Clone)]
+pub struct QualifiedName {
+    /// The library the design unit belongs to
+    pub library: String,
+    /// The design unit name (e.g. the entity name)
+    pub name: String,
+}
+
+impl QualifiedName {
+    /// Create a new qualified name
+    pub fn new(library: impl Into<String>, name: impl Into<String>) -> Self {
+        Self {
+            library: library.into(),
+            name: name.into(),
+        }
+    }
+
+    /// Case-insensitive key used for comparison, deduplication and lookup
+    pub fn key(&self) -> (String, String) {
+        (self.library.to_lowercase(), self.name.to_lowercase())
+    }
+}
+
+impl PartialEq for QualifiedName {
+    fn eq(&self, other: &Self) -> bool {
+        self.key() == other.key()
+    }
+}
+
+impl Eq for QualifiedName {}
+
+impl std::hash::Hash for QualifiedName {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.key().hash(state);
+    }
+}
+
+impl std::fmt::Display for QualifiedName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.", self.library)?;
+        write!(f, "{}", self.name)
+    }
+}
 
 /// A design unit found in a VHDL source file (entity or architecture)
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,6 +80,20 @@ pub struct DesignUnit {
     pub entity: Option<String>,
 }
 
+impl DesignUnit {
+    /// The library-qualified name of the primary unit this design unit
+    /// belongs to.
+    ///
+    /// For entities, this is the entity's own qualified name; for
+    /// architectures, it is the qualified name of the entity they belong to.
+    pub fn qualified_name(&self) -> QualifiedName {
+        QualifiedName::new(
+            self.library.clone(),
+            self.entity.clone().unwrap_or_else(|| self.name.clone()),
+        )
+    }
+}
+
 /// The kind of a design unit
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DesignUnitKind {
@@ -45,9 +107,9 @@ pub enum DesignUnitKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Instantiation {
     /// The entity that contains the instantiation (the parent in the tree)
-    pub parent: String,
+    pub parent: QualifiedName,
     /// The entity that is being instantiated (the child in the tree)
-    pub child: String,
+    pub child: QualifiedName,
     /// The source file of the parent
     pub parent_file: PathBuf,
     /// The kind of instantiation (direct entity, component or configuration)
@@ -55,7 +117,7 @@ pub struct Instantiation {
 }
 
 /// The kind of instantiation
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum InstantiationKind {
     /// Direct entity instantiation, e.g. `entity work.foo`
     Entity,
@@ -73,7 +135,7 @@ pub struct Hierarchy {
     /// All instantiations found in the project
     pub instantiations: Vec<Instantiation>,
     /// All design units that are not instantiated by anyone: candidates for top-level
-    pub top_level: Vec<String>,
+    pub top_level: Vec<QualifiedName>,
 }
 
 impl Hierarchy {
@@ -118,44 +180,47 @@ impl Hierarchy {
     /// Find the entities that are not instantiated by anyone else.
     ///
     /// This is the definition of the top-level entity: it is defined in the
-    /// project, but no other entity instantiates it.
-    fn compute_top_level(units: &[DesignUnit], instantiations: &[Instantiation]) -> Vec<String> {
-        // All entity names defined in the project
-        let entities: BTreeSet<String> = units
+    /// project, but no other entity instantiates it. Entities are compared by
+    /// their library-qualified name, so two entities with the same name in
+    /// different libraries are kept apart.
+    fn compute_top_level(
+        units: &[DesignUnit],
+        instantiations: &[Instantiation],
+    ) -> Vec<QualifiedName> {
+        // All entities defined in the project, keyed by their qualified name
+        let entities: BTreeMap<(String, String), QualifiedName> = units
             .iter()
             .filter(|u| u.kind == DesignUnitKind::Entity)
-            .map(|u| u.name.to_lowercase())
+            .map(|u| (u.qualified_name().key(), u.qualified_name()))
             .collect();
 
-        // Names of entities instantiated by someone else
-        let instantiated: BTreeSet<String> = instantiations
-            .iter()
-            .map(|i| i.child.to_lowercase())
-            .collect();
+        // Qualified names of entities instantiated by someone else
+        let instantiated: BTreeSet<(String, String)> =
+            instantiations.iter().map(|i| i.child.key()).collect();
 
         // Top-level candidates: entities that are defined but not instantiated
         entities
-            .iter()
-            .filter(|name| !instantiated.contains(*name))
-            .cloned()
+            .into_iter()
+            .filter(|(key, _)| !instantiated.contains(key))
+            .map(|(_, name)| name)
             .collect()
     }
 
     /// Get the children of an entity (the entities it instantiates)
-    pub fn children_of(&self, entity: &str) -> Vec<&Instantiation> {
-        let lower = entity.to_lowercase();
+    pub fn children_of(&self, entity: &QualifiedName) -> Vec<&Instantiation> {
+        let key = entity.key();
         self.instantiations
             .iter()
-            .filter(|i| i.parent.to_lowercase() == lower)
+            .filter(|i| i.parent.key() == key)
             .collect()
     }
 
     /// Get the parents of an entity (the entities that instantiate it)
-    pub fn parents_of(&self, entity: &str) -> Vec<&Instantiation> {
-        let lower = entity.to_lowercase();
+    pub fn parents_of(&self, entity: &QualifiedName) -> Vec<&Instantiation> {
+        let key = entity.key();
         self.instantiations
             .iter()
-            .filter(|i| i.child.to_lowercase() == lower)
+            .filter(|i| i.child.key() == key)
             .collect()
     }
 }
@@ -198,6 +263,7 @@ fn process_design_file(
                         entity: Some(entity_name.clone()),
                     });
                     let mut walker = InstantiationWalker {
+                        library,
                         file,
                         entity: &entity_name,
                         instantiations,
@@ -212,8 +278,13 @@ fn process_design_file(
 
 /// A walker that recursively traverses concurrent statements to find instantiations
 struct InstantiationWalker<'a> {
+    /// The library of the file being parsed
+    library: &'a str,
+    /// The source file being parsed
     file: &'a Path,
+    /// The name of the entity whose architecture is being walked
     entity: &'a str,
+    /// Where to record the instantiations found
     instantiations: &'a mut Vec<Instantiation>,
 }
 
@@ -257,65 +328,86 @@ impl<'a> InstantiationWalker<'a> {
     }
 
     fn walk_instantiation(&mut self, unit: &InstantiatedUnit) {
-        match unit {
+        let (child, kind) = match unit {
             InstantiatedUnit::Component(name) => {
-                if let Some(name) = extract_name_from_name(&name.item) {
-                    self.instantiations.push(Instantiation {
-                        parent: self.entity.to_string(),
-                        child: name,
-                        parent_file: self.file.to_path_buf(),
-                        kind: InstantiationKind::Component,
-                    });
+                // A component is bound by default binding to an entity with
+                // the same name, resolved in the current library (`work`)
+                match extract_name_from_name(&name.item) {
+                    Some(name) => (
+                        QualifiedName::new(self.library, name),
+                        InstantiationKind::Component,
+                    ),
+                    None => return,
                 }
             }
             InstantiatedUnit::Entity(name, _) => {
-                if let Some(name) = extract_name_from_name(&name.item) {
-                    self.instantiations.push(Instantiation {
-                        parent: self.entity.to_string(),
-                        child: name,
-                        parent_file: self.file.to_path_buf(),
-                        kind: InstantiationKind::Entity,
-                    });
+                // A direct entity instantiation carries its own library
+                // qualification, e.g. `entity lib2.my_module` or `entity work.foo`
+                match extract_qualified_name(&name.item, self.library) {
+                    Some(qualified) => (qualified, InstantiationKind::Entity),
+                    None => return,
                 }
             }
             InstantiatedUnit::Configuration(name) => {
-                if let Some(name) = extract_name_from_name(&name.item) {
-                    self.instantiations.push(Instantiation {
-                        parent: self.entity.to_string(),
-                        child: name,
-                        parent_file: self.file.to_path_buf(),
-                        kind: InstantiationKind::Configuration,
-                    });
+                match extract_qualified_name(&name.item, self.library) {
+                    Some(qualified) => (qualified, InstantiationKind::Configuration),
+                    None => return,
                 }
             }
-        }
+        };
+        let parent = QualifiedName::new(self.library, self.entity);
+        self.instantiations.push(Instantiation {
+            parent,
+            child,
+            parent_file: self.file.to_path_buf(),
+            kind,
+        });
     }
 }
 
-/// Extract the string representation of a `Name` from the AST.
+/// Extract a simple identifier from a `Name`, if it is a plain
+/// `Name::Designator` holding an identifier.
 ///
-/// Returns `None` for names that are not simple identifiers (e.g. indexed
-/// names or attribute names).
+/// Returns `None` for names that are not simple identifiers (e.g. selected,
+/// indexed or attribute names).
 fn extract_name_from_name(name: &Name) -> Option<String> {
     match name {
-        Name::Designator(designator) => {
-            match &designator.item {
-                Designator::Identifier(symbol) => Some(symbol.name_utf8()),
-                _ => None,
-            }
-        }
-        Name::Selected(prefix, suffix) => {
-            // For a selected name like `lib.entity_name`, the suffix is the entity name
-            let _ = prefix;
-            match &suffix.item.item {
-                Designator::Identifier(symbol) => Some(symbol.name_utf8()),
-                _ => None,
-            }
-        }
+        Name::Designator(designator) => extract_name_from_designator(&designator.item),
         _ => None,
     }
 }
 
+/// Extract the identifier of a `Designator`, if it is a simple identifier.
+fn extract_name_from_designator(designator: &Designator) -> Option<String> {
+    match designator {
+        Designator::Identifier(symbol) => Some(symbol.name_utf8()),
+        _ => None,
+    }
+}
+
+/// Extract the library-qualified name of an instantiated unit from a `Name`.
+///
+/// - `entity lib2.my_module`  -> `QualifiedName::new("lib2", "my_module")`
+/// - `entity work.my_module`  -> `QualifiedName::new(default_library, "my_module")`
+///   (`work` refers to the library of the file being parsed)
+/// - `entity my_module`       -> `QualifiedName::new(default_library, "my_module")`
+///   (no library part, resolved to the current library)
+///
+/// Returns `None` for names that are not simple or selected identifiers.
+fn extract_qualified_name(name: &Name, default_library: &str) -> Option<QualifiedName> {
+    match name {
+        Name::Selected(prefix, suffix) => {
+            let library = match extract_name_from_name(&prefix.item) {
+                Some(lib) if lib.eq_ignore_ascii_case("work") => default_library.to_string(),
+                Some(lib) => lib,
+                None => default_library.to_string(),
+            };
+            extract_name_from_designator(&suffix.item.item)
+                .map(|name| QualifiedName::new(library, name))
+        }
+        _ => extract_name_from_name(name).map(|name| QualifiedName::new(default_library, name)),
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -343,9 +435,83 @@ mod tests {
             !hierarchy.instantiations.is_empty(),
             "Expected instantiations to be found"
         );
-        assert!(!hierarchy.top_level.is_empty(), "Expected top-level entities");
+        assert!(
+            !hierarchy.top_level.is_empty(),
+            "Expected top-level entities"
+        );
 
-        assert_eq!(hierarchy.top_level, vec!["neorv32_top"]);
+        assert_eq!(
+            hierarchy.top_level,
+            vec![QualifiedName::new("neorv32", "neorv32_top")]
+        );
+    }
+
+    #[test]
+    fn test_multilib_hierarchy() {
+        let example_dir = example_dir().join("multilib");
+        let toml_file = example_dir.join("vhdl_ls.toml");
+        assert!(
+            toml_file.exists(),
+            "Test requires the example project at {}",
+            toml_file.display()
+        );
+        let project = Project::from_vhdl_ls_toml(&toml_file).unwrap();
+        let hierarchy = Hierarchy::build(&project).unwrap();
+        assert_eq!(hierarchy.units.len(), 6);
+        assert_eq!(hierarchy.instantiations.len(), 2);
+
+        // `lib2.my_module` is instantiated by `lib1.my_module`, so the only
+        // top-level entity is `lib1.my_module` (and not `lib2.my_module`)
+        assert_eq!(
+            hierarchy.top_level,
+            vec![QualifiedName::new("lib1", "my_module")]
+        );
+
+        // The two instantiations in `lib1.my_module`
+        let children = hierarchy.children_of(&QualifiedName::new("lib1", "my_module"));
+        let mut children: Vec<_> = children.iter().map(|i| (i.child.key(), i.kind)).collect();
+        children.sort();
+        assert_eq!(
+            children,
+            vec![
+                (
+                    ("lib1".into(), "a_submodule".into()),
+                    InstantiationKind::Component
+                ),
+                (
+                    ("lib2".into(), "my_module".into()),
+                    InstantiationKind::Entity
+                ),
+            ]
+        );
+
+        // `lib2.my_module` is instantiated, `lib1.my_module` is not
+        assert_eq!(
+            hierarchy
+                .parents_of(&QualifiedName::new("lib2", "my_module"))
+                .len(),
+            1
+        );
+        assert!(
+            hierarchy
+                .parents_of(&QualifiedName::new("lib1", "my_module"))
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn test_qualified_name_case_insensitive() {
+        assert_eq!(
+            QualifiedName::new("lib1", "my_module"),
+            QualifiedName::new("LIB1", "MY_MODULE")
+        );
+        assert_ne!(
+            QualifiedName::new("lib1", "my_module"),
+            QualifiedName::new("lib2", "my_module")
+        );
+        assert_eq!(
+            QualifiedName::new("lib1", "my_module").to_string(),
+            "lib1.my_module"
+        );
     }
 }
-
