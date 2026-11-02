@@ -110,8 +110,6 @@ pub struct Instantiation {
     pub parent: QualifiedName,
     /// The entity that is being instantiated (the child in the tree)
     pub child: QualifiedName,
-    /// The source file of the parent
-    pub parent_file: PathBuf,
     /// The kind of instantiation (direct entity, component or configuration)
     pub kind: InstantiationKind,
 }
@@ -265,7 +263,6 @@ fn process_design_file(
                     });
                     let mut walker = InstantiationWalker {
                         library,
-                        file,
                         entity: &entity_name,
                         instantiations,
                     };
@@ -280,8 +277,6 @@ fn process_design_file(
 struct InstantiationWalker<'a> {
     /// The library of the file being parsed
     library: &'a str,
-    /// The source file being parsed
-    file: &'a Path,
     /// The name of the entity whose architecture is being walked
     entity: &'a str,
     /// Where to record the instantiations found
@@ -359,7 +354,6 @@ impl<'a> InstantiationWalker<'a> {
         self.instantiations.push(Instantiation {
             parent,
             child,
-            parent_file: self.file.to_path_buf(),
             kind,
         });
     }
