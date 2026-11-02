@@ -108,6 +108,8 @@ pub enum DesignUnitKind {
 pub struct Instantiation {
     /// The entity that contains the instantiation (the parent in the tree)
     pub parent: QualifiedName,
+    /// The instantiation label
+    pub label: String,
     /// The entity that is being instantiated (the child in the tree)
     pub child: QualifiedName,
     /// The kind of instantiation (direct entity, component or configuration)
@@ -286,14 +288,17 @@ struct InstantiationWalker<'a> {
 impl<'a> InstantiationWalker<'a> {
     fn walk_statements(&mut self, statements: &[LabeledConcurrentStatement]) {
         for statement in statements {
-            self.walk_statement(&statement.statement.item);
+            let label = if let Some(symbol) = &statement.label.tree {
+                symbol.item.to_string()
+            } else { String::new() };
+            self.walk_statement(&statement.statement.item, label);
         }
     }
 
-    fn walk_statement(&mut self, statement: &ConcurrentStatement) {
+    fn walk_statement(&mut self, statement: &ConcurrentStatement, label: String) {
         match statement {
             ConcurrentStatement::Instance(inst) => {
-                self.walk_instantiation(&inst.unit);
+                self.walk_instantiation(&inst.unit, label);
             }
             ConcurrentStatement::Block(block) => {
                 self.walk_statements(&block.statements);
@@ -322,7 +327,7 @@ impl<'a> InstantiationWalker<'a> {
         self.walk_statements(&body.statements);
     }
 
-    fn walk_instantiation(&mut self, unit: &InstantiatedUnit) {
+    fn walk_instantiation(&mut self, unit: &InstantiatedUnit, label: String) {
         let (child, kind) = match unit {
             InstantiatedUnit::Component(name) => {
                 // A component is bound by default binding to an entity with
@@ -353,6 +358,7 @@ impl<'a> InstantiationWalker<'a> {
         let parent = QualifiedName::new(self.library, self.entity);
         self.instantiations.push(Instantiation {
             parent,
+            label,
             child,
             kind,
         });
