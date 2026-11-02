@@ -10,6 +10,7 @@ pub enum Pane {
     Text(String),
     Tracing,
     Console,
+    Hierarchy
 }
 
 /// display the complete tiles tree
@@ -50,6 +51,7 @@ impl<'a> egui_tiles::Behavior<Pane> for MyBehavior<'a> {
             Pane::Text(text) => text.clone().into(),
             Pane::Tracing => "Tracing".into(),
             Pane::Console => "TCL".into(),
+            Pane::Hierarchy => "Hierarchy".into()
         }
     }
 
@@ -73,9 +75,18 @@ impl<'a> egui_tiles::Behavior<Pane> for MyBehavior<'a> {
                     self.context.execute_tcl(&cmd);
                 };
             }
+            Pane::Hierarchy => {
+                display_project_hierarchy(ui, &self.context.project_entries);
+            }
         }
 
         Default::default()
+    }
+}
+
+fn display_project_hierarchy(ui: &mut egui::Ui, hierarchy: &Vec<crate::tcl::project::ProjectEntry>) {
+    for entry in hierarchy {
+        ui.collapsing(entry.to_string(), |ui| display_project_hierarchy(ui, &entry.children));
     }
 }
 

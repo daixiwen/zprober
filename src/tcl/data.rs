@@ -7,6 +7,9 @@ use crate::tcl::interpreter::MsgFromTcl;
 pub struct Data {
     msg_sender: mpsc::Sender<MsgFromTcl>,
     pub egui_ctx: Option<egui::Context>,
+
+    pub vhdl_project: Option<crate::vhdl::Project>,
+    pub vhdl_hierarchy: Option<crate::vhdl::Hierarchy>
 }
 
 impl Data {
@@ -14,6 +17,8 @@ impl Data {
         Data {
             msg_sender,
             egui_ctx: None,
+            vhdl_project: None,
+            vhdl_hierarchy: None
         }
     }
 
@@ -38,5 +43,9 @@ impl Data {
 
     pub fn gui_command_error(&self, msg: &str) {
         self.send_msg(MsgFromTcl::CommandError(msg.into()));
+    }
+
+    pub fn send_new_hierarchy(&self, hierarchy: Vec<super::project::ProjectEntry>) {
+        self.send_msg(MsgFromTcl::NewProjectHierarchy(hierarchy));
     }
 }

@@ -23,6 +23,9 @@ pub struct ZProberAppContext {
 
     #[serde(skip)]
     tcl: crate::tcl::interpreter::Interpreter,
+
+    #[serde(skip)]
+    pub project_entries: Vec<crate::tcl::project::ProjectEntry>,
 }
 
 impl ZProberAppContext {
@@ -45,27 +48,32 @@ impl Default for ZProberAppContext {
             console,
             collector: Default::default(),
             tcl: Default::default(),
+            project_entries: Default::default(),
         }
     }
 }
 
+fn create_tree() -> egui_tiles::Tree<panes::Pane> {
+    // create tiles tree
+    let mut tiles = egui_tiles::Tiles::default();
+
+    let tabs: Vec<egui_tiles::TileId> = vec![
+        tiles.insert_pane(panes::Pane::Settings),
+        tiles.insert_pane(panes::Pane::Text("toto".to_owned())),
+        tiles.insert_pane(panes::Pane::Tracing),
+        tiles.insert_pane(panes::Pane::Console),
+        tiles.insert_pane(panes::Pane::Hierarchy)
+    ];
+    let root: egui_tiles::TileId = tiles.insert_tab_tile(tabs);
+
+    egui_tiles::Tree::new(egui::Id::unique("my_tree"), root, tiles)
+}
+
 impl Default for ZProberApp {
     fn default() -> Self {
-        // create tiles tree
-        let mut tiles = egui_tiles::Tiles::default();
-
-        let tabs: Vec<egui_tiles::TileId> = vec![
-            tiles.insert_pane(panes::Pane::Settings),
-            tiles.insert_pane(panes::Pane::Text("toto".to_owned())),
-            tiles.insert_pane(panes::Pane::Tracing),
-            tiles.insert_pane(panes::Pane::Console),
-        ];
-        let root: egui_tiles::TileId = tiles.insert_tab_tile(tabs);
-
-        let tiles_tree = egui_tiles::Tree::new(egui::Id::unique("my_tree"), root, tiles);
 
         ZProberApp {
-            tiles_tree,
+            tiles_tree : create_tree(),
             context: Default::default(),
         }
     }
@@ -120,6 +128,9 @@ impl eframe::App for ZProberApp {
                 MsgFromTcl::CommandError(result) => {
                     self.context.console.write(&format!("ERROR: {result}"));
                     self.context.console.prompt();
+                }
+                MsgFromTcl::NewProjectHierarchy(entries) => {
+                    self.context.project_entries = entries;
                 }
             }
         }

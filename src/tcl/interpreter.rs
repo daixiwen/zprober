@@ -1,6 +1,6 @@
 // Interface to the TCL interpreter from the GUI
 
-use crate::tcl::data::Data;
+use super::data::Data;
 use molt::{ContextID, Interp, MoltResult, Value, check_args, molt_ok};
 use std::sync::mpsc;
 use tracing::{Level, event, span};
@@ -41,6 +41,7 @@ impl Interpreter {
         // inject a replacement for puts to print into the GUI console
         interpreter.remove_command("puts");
         interpreter.add_context_command("puts", Interpreter::cmd_puts, data_id);
+        super::project::install_tcl(&mut interpreter, data_id);
 
         loop {
             match msg_receiver.recv() {
@@ -143,4 +144,5 @@ pub enum MsgFromTcl {
     Write(String),
     CommandOk(String),
     CommandError(String),
+    NewProjectHierarchy(Vec<super::project::ProjectEntry>)
 }

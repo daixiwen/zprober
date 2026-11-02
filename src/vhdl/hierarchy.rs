@@ -223,6 +223,14 @@ impl Hierarchy {
             .filter(|i| i.child.key() == key)
             .collect()
     }
+
+    /// get a list of entities who instantiate a fpgacapzero core, from a list of names
+    pub fn capz_instantiators(&self, cores_names: Vec<String>) -> Vec<&Instantiation> {
+        self.instantiations
+            .iter()
+            .filter(|i| cores_names.contains(&i.child.name))
+            .collect()
+    }
 }
 
 /// Process a parsed design file: extract entities, architectures and instantiations
