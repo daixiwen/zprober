@@ -276,7 +276,7 @@ fn process_design_file(
                         entity: &entity_name,
                         instantiations,
                     };
-                    walker.walk_statements(statements);
+                    walker.walk_statements(statements,"");
                 }
             }
         }
@@ -294,11 +294,11 @@ struct InstantiationWalker<'a> {
 }
 
 impl<'a> InstantiationWalker<'a> {
-    fn walk_statements(&mut self, statements: &[LabeledConcurrentStatement]) {
+    fn walk_statements(&mut self, statements: &[LabeledConcurrentStatement], label_prefix: &str) {
         for statement in statements {
             let label = if let Some(symbol) = &statement.label.tree {
-                symbol.item.to_string()
-            } else { String::new() };
+                format!("{}{}", label_prefix, symbol.item)
+            } else { label_prefix.to_owned() };
             self.walk_statement(&statement.statement.item, label);
         }
     }
@@ -309,30 +309,30 @@ impl<'a> InstantiationWalker<'a> {
                 self.walk_instantiation(&inst.unit, label);
             }
             ConcurrentStatement::Block(block) => {
-                self.walk_statements(&block.statements);
+                self.walk_statements(&block.statements, "");
             }
             ConcurrentStatement::ForGenerate(gen_stmt) => {
-                self.walk_generate_body(&gen_stmt.body);
+                self.walk_generate_body(&gen_stmt.body, &label);
             }
             ConcurrentStatement::IfGenerate(gen_stmt) => {
                 for cond in &gen_stmt.conds.conditionals {
-                    self.walk_generate_body(&cond.item);
+                    self.walk_generate_body(&cond.item, &label);
                 }
                 if let Some((else_body, _)) = &gen_stmt.conds.else_item {
-                    self.walk_generate_body(else_body);
+                    self.walk_generate_body(else_body, &label);
                 }
             }
             ConcurrentStatement::CaseGenerate(gen_stmt) => {
                 for alt in &gen_stmt.sels.alternatives {
-                    self.walk_generate_body(&alt.item);
+                    self.walk_generate_body(&alt.item, &label);
                 }
             }
             _ => {} // Other statements do not contain instantiations
         }
     }
 
-    fn walk_generate_body(&mut self, body: &GenerateBody) {
-        self.walk_statements(&body.statements);
+    fn walk_generate_body(&mut self, body: &GenerateBody, label: &str) {
+        self.walk_statements(&body.statements, &format!("{}.", label));
     }
 
     fn walk_instantiation(&mut self, unit: &InstantiatedUnit, label: String) {
