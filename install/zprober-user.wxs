@@ -1,0 +1,60 @@
+<?xml version='1.0' encoding='windows-1252'?>
+<Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
+  <Product Name='ZProber 0.1.0' Manufacturer='Sylvain Tertois'
+    Id='F8B384D7-EF22-42DF-97A8-C70ED5F009D9' 
+    UpgradeCode='50EE2028-A03C-4783-998D-996B325A183B'
+    Language='1033' Codepage='1252' Version='0.1.4'>
+    <Package Id='*' Keywords='Installer' Description="ZProber installer"
+      Comments='Opensource, unlicense' Manufacturer='Sylvain Tertois'
+      InstallerVersion='100' Languages='1033' Compressed='yes' SummaryCodepage='1252' 
+      InstallScope='perUser'/>
+    <Media Id='1' Cabinet='ZProber.cab' EmbedCab='yes' DiskPrompt='Archive' />
+    <Property Id='DiskPrompt' Value="ZPRober installation archive 1" />
+    <Property Id="ALLUSERS" Secure="yes" Value="2"/>
+    <Property Id="MSIINSTALLPERUSER" Secure="yes" Value="1"/>
+    
+    <Directory Id='TARGETDIR' Name='SourceDir'>
+      <Directory Id='ProgramFilesFolder' Name='LocalFiles'>
+        <Directory Id='ZPROBERINSTALLDIR' Name='ZProber'>
+          <Component Id='MainExecutable' Guid='B82F0372-A4E4-4928-A219-F87A631D90B8'>
+            <File Id='ZPROBEREXE' Name='zprober.exe' DiskId='1' Source='..\target\x86_64-pc-windows-msvc\release\zprober.exe' KeyPath='yes'>
+              <Shortcut Id="startmenuzprober" Directory="ProgramMenuDir" Name="ZProber" WorkingDirectory='INSTALLDIR' 
+                Icon="icon.ico" IconIndex="0" Advertise="yes" />
+            </File>
+          </Component>
+        </Directory>
+      </Directory>
+        
+      <Directory Id="ProgramMenuFolder" Name="Programs">
+        <Directory Id="ProgramMenuDir" Name="ZProber">
+          <Component Id="ProgramMenuDir" Guid="179C4C01-619D-4C6B-B0C0-9D937511EA1F">
+            <RemoveFolder Id='ProgramMenuDir' On='uninstall' />
+            <RegistryValue Root='HKCU' Key='Software\Sylvain Tertois\ZProber' Type='string' Value='' KeyPath='yes' />
+          </Component>
+        </Directory>
+      </Directory>
+    </Directory>
+    
+    <Feature Id='Complete' Level='1'>
+      <ComponentRef Id='MainExecutable' />
+      <ComponentRef Id='ProgramMenuDir' />
+    </Feature>
+    
+    <!--Icon Id="icon.ico" SourceFile="icon.ico" /-->
+    
+    <Property Id="WIXUI_INSTALLDIR" Value="ZPROBERINSTALLDIR" />
+    <UI>
+      <UIRef Id="WixUI_InstallDir" />
+      <Publish Dialog="WelcomeDlg"
+            Control="Next"
+            Event="NewDialog"
+            Value="InstallDirDlg"
+            Order="2">1</Publish>
+      <Publish Dialog="InstallDirDlg"
+            Control="Back"
+            Event="NewDialog"
+            Value="WelcomeDlg"
+            Order="2">1</Publish>
+    </UI>
+  </Product>
+</Wix>

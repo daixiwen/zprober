@@ -1,0 +1,35 @@
+name: develmsi
+
+on: workflow_dispatch
+
+jobs:
+  build-win:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install latest rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          default: true
+          override: true
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "winbuild"
+          
+      - name: Build
+        run: cargo build --all --release --target x86_64-pc-windows-msvc --verbose
+
+      - name: MSI
+        run: ./createmsi.bat devel
+        working-directory: ./install
+
+      - name: Deploy
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-msi
+          path: ./install/*.msi

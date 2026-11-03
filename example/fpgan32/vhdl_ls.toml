@@ -1,0 +1,17 @@
+# What standard to use. This is optional and defaults to VHDL 2008.
+standard = "2008"
+
+# File names are either absolute or relative to the parent folder of the vhdl_ls.toml file
+[libraries]
+neorv32.files = [
+    '../neorv32/rtl/core/*.vhd'
+]
+fpgacapzero.files = [
+    '../fpgacapzero/rtl/vhdl/pkg/*.vhd',
+    '../fpgacapzero/rtl/vhdl/fcapz_ela_polarfire.vhd',
+    '../fpgacapzero/rtl/vhdl/jtag_tap/jtag_tap_polarfire.vhd',
+    '../fpgacapzero/rtl/vhdl/core/*.vhd',
+]
+fpgan32.files = [
+    'toplevel.vhd'
+]
