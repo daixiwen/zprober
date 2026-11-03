@@ -41,6 +41,7 @@ impl Interpreter {
         // inject a replacement for puts to print into the GUI console
         interpreter.remove_command("puts");
         interpreter.add_context_command("puts", Interpreter::cmd_puts, data_id);
+        interpreter.add_context_command("reset_layout", Interpreter::cmd_reset_layout, data_id);
         super::project::install_tcl(&mut interpreter, data_id);
 
         loop {
@@ -130,6 +131,14 @@ impl Interpreter {
         tcl_data.gui_write(&argv[1].to_string());
         molt_ok!()
     }
+
+    fn cmd_reset_layout(interp: &mut Interp, context_id: ContextID, argv: &[Value]) -> MoltResult {
+        check_args(1, argv, 1, 1, "")?;
+
+        let tcl_data: &Data = interp.context(context_id);
+        tcl_data.send_reset_layout();
+        molt_ok!()
+    }
 }
 
 #[derive(Debug)]
@@ -144,5 +153,6 @@ pub enum MsgFromTcl {
     Write(String),
     CommandOk(String),
     CommandError(String),
-    NewProjectHierarchy(Vec<super::project::ProjectEntry>)
+    NewProjectHierarchy(Vec<super::project::ProjectEntry>),
+    ResetGuiLayout,
 }

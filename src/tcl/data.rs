@@ -48,4 +48,8 @@ impl Data {
     pub fn send_new_hierarchy(&self, hierarchy: Vec<super::project::ProjectEntry>) {
         self.send_msg(MsgFromTcl::NewProjectHierarchy(hierarchy));
     }
+
+    pub fn send_reset_layout(&self) {
+        self.send_msg(MsgFromTcl::ResetGuiLayout);
+    }
 }

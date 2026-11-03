@@ -132,11 +132,14 @@ impl eframe::App for ZProberApp {
                 MsgFromTcl::NewProjectHierarchy(entries) => {
                     self.context.project_entries = entries;
                 }
+                MsgFromTcl::ResetGuiLayout => {
+                    self.tiles_tree = create_tree();
+                }
             }
         }
 
         // GUI
-        crate::gui::menu::menu_bar(ui);
+        crate::gui::menu::menu_bar(ui, &self.context);
         egui::CentralPanel::default().show(ui, |ui| {
             crate::gui::panes::tree_ui(ui, &mut self.tiles_tree, &mut self.context);
         });

@@ -1,5 +1,5 @@
 /// Window menu bar
-pub fn menu_bar(ui: &mut egui::Ui) {
+pub fn menu_bar(ui: &mut egui::Ui, context: &crate::app::ZProberAppContext) {
     egui::Panel::top("menu").show(ui, |ui| {
         ui.horizontal(|ui| {
             ui.label("ZProber");
@@ -11,6 +11,12 @@ pub fn menu_bar(ui: &mut egui::Ui) {
                             ui.send_viewport_cmd(egui::ViewportCommand::Close);
                         }
                     });
+                    ui.menu_button("View", |ui| {
+                        if ui.button("Reset Layout").clicked() {
+                            context.execute_tcl("reset_layout");
+                        }
+                    });
+
                 });
             });
         });
