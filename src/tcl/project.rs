@@ -1,22 +1,21 @@
-
 use crate::vhdl::{Hierarchy, QualifiedName, hierarchy};
 
 /// load a project tcl function
 use super::data::Data;
-use molt::{ContextID, Interp, MoltResult, Value, check_args, molt_ok, molt_err, Exception};
+use molt::{ContextID, Exception, Interp, MoltResult, Value, check_args, molt_err, molt_ok};
 use std::path::PathBuf;
 
 /// Describes an entry in the project hierarchy
 #[derive(Debug)]
 pub struct ProjectEntry {
     /// label name
-    pub label : String,
+    pub label: String,
     /// library name
-    pub library : String,
+    pub library: String,
     /// entity name
-    pub entity : String,
+    pub entity: String,
     /// list of instantiated entities
-    pub children : Vec<ProjectEntry>,
+    pub children: Vec<ProjectEntry>,
 }
 
 /// string conversion
@@ -65,26 +64,34 @@ fn cmd_import_vhdl_ls(interp: &mut Interp, context_id: ContextID, argv: &[Value]
         Ok(hierarchy) => tcl_data.vhdl_hierarchy = Some(hierarchy),
         Err(msg) => {
             molt_err!("Error creating project hierarchy for {}: {}", filename, msg)?;
-        }        
+        }
     }
 
     let hierarchy = tcl_data.vhdl_hierarchy.as_ref().unwrap();
     let top_levels = hierarchy.capz_instantiators(vec!["fcapz_ela_polarfire".to_owned()]);
 
     let num_top_levels = top_levels.len();
-    tracing::event!(tracing::Level::INFO, filename, num_top_levels, "top levels found");
+    tracing::event!(
+        tracing::Level::INFO,
+        filename,
+        num_top_levels,
+        "top levels found"
+    );
 
     if num_top_levels == 0 {
-        molt_err!("No entity instantiating am fpgacapzero core has been found in project {}", filename)?;
+        molt_err!(
+            "No entity instantiating am fpgacapzero core has been found in project {}",
+            filename
+        )?;
     }
 
-    let project_entries : Vec<ProjectEntry> = top_levels
+    let project_entries: Vec<ProjectEntry> = top_levels
         .iter()
         .map(|top_level| ProjectEntry {
             label: String::new(),
             library: top_level.parent.library.clone(),
             entity: top_level.parent.name.clone(),
-            children: create_children_entries(hierarchy, &top_level.parent)
+            children: create_children_entries(hierarchy, &top_level.parent),
         })
         .collect();
 
@@ -93,13 +100,14 @@ fn cmd_import_vhdl_ls(interp: &mut Interp, context_id: ContextID, argv: &[Value]
 }
 
 fn create_children_entries(hierarchy: &Hierarchy, parent: &QualifiedName) -> Vec<ProjectEntry> {
-    hierarchy.children_of(parent)
+    hierarchy
+        .children_of(parent)
         .iter()
         .map(|instantiation| ProjectEntry {
             label: instantiation.label.clone(),
             library: instantiation.child.library.clone(),
             entity: instantiation.child.name.clone(),
-            children: create_children_entries(hierarchy, &instantiation.child)
+            children: create_children_entries(hierarchy, &instantiation.child),
         })
         .collect()
 }

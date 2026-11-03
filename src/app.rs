@@ -62,7 +62,7 @@ fn create_tree() -> egui_tiles::Tree<panes::Pane> {
         tiles.insert_pane(panes::Pane::Text("toto".to_owned())),
         tiles.insert_pane(panes::Pane::Tracing),
         tiles.insert_pane(panes::Pane::Console),
-        tiles.insert_pane(panes::Pane::Hierarchy)
+        tiles.insert_pane(panes::Pane::Hierarchy),
     ];
     let root: egui_tiles::TileId = tiles.insert_tab_tile(tabs);
 
@@ -71,9 +71,8 @@ fn create_tree() -> egui_tiles::Tree<panes::Pane> {
 
 impl Default for ZProberApp {
     fn default() -> Self {
-
         ZProberApp {
-            tiles_tree : create_tree(),
+            tiles_tree: create_tree(),
             context: Default::default(),
         }
     }

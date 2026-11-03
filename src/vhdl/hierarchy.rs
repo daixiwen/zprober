@@ -276,7 +276,7 @@ fn process_design_file(
                         entity: &entity_name,
                         instantiations,
                     };
-                    walker.walk_statements(statements,"");
+                    walker.walk_statements(statements, "");
                 }
             }
         }
@@ -298,7 +298,9 @@ impl<'a> InstantiationWalker<'a> {
         for statement in statements {
             let label = if let Some(symbol) = &statement.label.tree {
                 format!("{}{}", label_prefix, symbol.item)
-            } else { label_prefix.to_owned() };
+            } else {
+                label_prefix.to_owned()
+            };
             self.walk_statement(&statement.statement.item, label);
         }
     }

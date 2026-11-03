@@ -9,7 +9,7 @@ pub struct Data {
     pub egui_ctx: Option<egui::Context>,
 
     pub vhdl_project: Option<crate::vhdl::Project>,
-    pub vhdl_hierarchy: Option<crate::vhdl::Hierarchy>
+    pub vhdl_hierarchy: Option<crate::vhdl::Hierarchy>,
 }
 
 impl Data {
@@ -18,7 +18,7 @@ impl Data {
             msg_sender,
             egui_ctx: None,
             vhdl_project: None,
-            vhdl_hierarchy: None
+            vhdl_hierarchy: None,
         }
     }
 

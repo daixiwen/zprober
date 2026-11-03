@@ -369,7 +369,7 @@ impl ConsoleWindow {
         };
 
         let mut hist_line = String::new();
-        if let Some(i) = (0..hc).rev().next() {
+        if let Some(i) = (0..hc).next_back() {
             hist_line = self.command_history[i].clone();
             self.history_cursor = Some(i);
         }

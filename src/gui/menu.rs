@@ -16,7 +16,6 @@ pub fn menu_bar(ui: &mut egui::Ui, context: &crate::app::ZProberAppContext) {
                             context.execute_tcl("reset_layout");
                         }
                     });
-
                 });
             });
         });
