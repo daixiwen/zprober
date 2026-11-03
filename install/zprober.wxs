@@ -36,7 +36,7 @@
       <ComponentRef Id='ProgramMenuDir' />
     </Feature>
     
-    <Icon Id="icon.ico" SourceFile="icon.ico" />
+    <!--Icon Id="icon.ico" SourceFile="icon.ico" /-->
     
     <Property Id="WIXUI_INSTALLDIR" Value="ZPROBERINSTALLDIR" />
 
