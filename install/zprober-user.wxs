@@ -3,13 +3,13 @@
   <Product Name='ZProber 0.1.0' Manufacturer='Sylvain Tertois'
     Id='F8B384D7-EF22-42DF-97A8-C70ED5F009D9' 
     UpgradeCode='50EE2028-A03C-4783-998D-996B325A183B'
-    Language='1033' Codepage='1252' Version='0.1.4'>
+    Language='1033' Codepage='1252' Version='0.1.0'>
     <Package Id='*' Keywords='Installer' Description="ZProber installer"
       Comments='Opensource, unlicense' Manufacturer='Sylvain Tertois'
       InstallerVersion='100' Languages='1033' Compressed='yes' SummaryCodepage='1252' 
       InstallScope='perUser'/>
     <Media Id='1' Cabinet='ZProber.cab' EmbedCab='yes' DiskPrompt='Archive' />
-    <Property Id='DiskPrompt' Value="ZPRober installation archive 1" />
+    <Property Id='DiskPrompt' Value="ZProber installation archive 1" />
     <Property Id="ALLUSERS" Secure="yes" Value="2"/>
     <Property Id="MSIINSTALLPERUSER" Secure="yes" Value="1"/>
     
@@ -19,7 +19,7 @@
           <Component Id='MainExecutable' Guid='B82F0372-A4E4-4928-A219-F87A631D90B8'>
             <File Id='ZPROBEREXE' Name='zprober.exe' DiskId='1' Source='..\target\x86_64-pc-windows-msvc\release\zprober.exe' KeyPath='yes'>
               <Shortcut Id="startmenuzprober" Directory="ProgramMenuDir" Name="ZProber" WorkingDirectory='INSTALLDIR' 
-                Icon="icon.ico" IconIndex="0" Advertise="yes" />
+                /><!--Icon="icon.ico" IconIndex="0" Advertise="yes" -->
             </File>
           </Component>
         </Directory>
