@@ -8,6 +8,8 @@ use std::path::PathBuf;
 /// Describes an entry in the project hierarchy
 #[derive(Debug)]
 pub struct ProjectEntry {
+    /// entry path
+    pub path: String,
     /// label name
     pub label: String,
     /// library name
@@ -32,6 +34,7 @@ impl std::fmt::Display for ProjectEntry {
 /// install custom TCL commands from this file
 pub fn install_tcl(interpreter: &mut molt::Interp, data_id: molt::ContextID) {
     interpreter.add_context_command("import_vhdl_ls", cmd_import_vhdl_ls, data_id);
+    interpreter.add_context_command("select_instance", cmd_select_instance, data_id);
 }
 
 /// new project from a vhdl_ls.toml file
@@ -88,10 +91,11 @@ fn cmd_import_vhdl_ls(interp: &mut Interp, context_id: ContextID, argv: &[Value]
     let project_entries: Vec<ProjectEntry> = top_levels
         .iter()
         .map(|top_level| ProjectEntry {
+            path: String::new(),
             label: String::new(),
             library: top_level.parent.library.clone(),
             entity: top_level.parent.name.clone(),
-            children: create_children_entries(hierarchy, &top_level.parent),
+            children: create_children_entries(hierarchy, &top_level.parent, ""),
         })
         .collect();
 
@@ -99,15 +103,33 @@ fn cmd_import_vhdl_ls(interp: &mut Interp, context_id: ContextID, argv: &[Value]
     molt_ok!()
 }
 
-fn create_children_entries(hierarchy: &Hierarchy, parent: &QualifiedName) -> Vec<ProjectEntry> {
+fn create_children_entries(
+    hierarchy: &Hierarchy,
+    parent: &QualifiedName,
+    parent_path: &str,
+) -> Vec<ProjectEntry> {
     hierarchy
         .children_of(parent)
         .iter()
-        .map(|instantiation| ProjectEntry {
-            label: instantiation.label.clone(),
-            library: instantiation.child.library.clone(),
-            entity: instantiation.child.name.clone(),
-            children: create_children_entries(hierarchy, &instantiation.child),
+        .map(|instantiation| {
+            let path = format!("{}.{}", parent_path, instantiation.label);
+            ProjectEntry {
+                path: path.clone(),
+                label: instantiation.label.clone(),
+                library: instantiation.child.library.clone(),
+                entity: instantiation.child.name.clone(),
+                children: create_children_entries(hierarchy, &instantiation.child, &path),
+            }
         })
         .collect()
+}
+
+/// select an instance in the project
+fn cmd_select_instance(interp: &mut Interp, context_id: ContextID, argv: &[Value]) -> MoltResult {
+    check_args(1, argv, 2, 2, "instance_path")?;
+    let tcl_data: &mut Data = interp.context(context_id);
+    let instance_path = argv[1].to_string();
+
+    tcl_data.send_selected_instance(instance_path);
+    molt_ok!()
 }

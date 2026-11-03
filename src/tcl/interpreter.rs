@@ -155,4 +155,5 @@ pub enum MsgFromTcl {
     CommandError(String),
     NewProjectHierarchy(Vec<super::project::ProjectEntry>),
     ResetGuiLayout,
+    SelectInstance(String),
 }

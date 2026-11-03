@@ -52,4 +52,8 @@ impl Data {
     pub fn send_reset_layout(&self) {
         self.send_msg(MsgFromTcl::ResetGuiLayout);
     }
+
+    pub fn send_selected_instance(&self, instance_path: String) {
+        self.send_msg(MsgFromTcl::SelectInstance(instance_path));
+    }
 }

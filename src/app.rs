@@ -26,6 +26,9 @@ pub struct ZProberAppContext {
 
     #[serde(skip)]
     pub project_entries: Vec<crate::tcl::project::ProjectEntry>,
+
+    #[serde(skip)]
+    pub selected_path: String,
 }
 
 impl ZProberAppContext {
@@ -49,6 +52,7 @@ impl Default for ZProberAppContext {
             collector: Default::default(),
             tcl: Default::default(),
             project_entries: Default::default(),
+            selected_path: Default::default(),
         }
     }
 }
@@ -133,6 +137,9 @@ impl eframe::App for ZProberApp {
                 }
                 MsgFromTcl::ResetGuiLayout => {
                     self.tiles_tree = create_tree();
+                }
+                MsgFromTcl::SelectInstance(new_path) => {
+                    self.context.selected_path = new_path;
                 }
             }
         }

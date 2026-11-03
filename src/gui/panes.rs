@@ -76,7 +76,7 @@ impl<'a> egui_tiles::Behavior<Pane> for MyBehavior<'a> {
                 };
             }
             Pane::Hierarchy => {
-                display_project_hierarchy(ui, &self.context.project_entries);
+                display_project_hierarchy(ui, &self.context.project_entries, self.context);
             }
         }
 
@@ -87,11 +87,20 @@ impl<'a> egui_tiles::Behavior<Pane> for MyBehavior<'a> {
 fn display_project_hierarchy(
     ui: &mut egui::Ui,
     hierarchy: &Vec<crate::tcl::project::ProjectEntry>,
+    context: &crate::app::ZProberAppContext,
 ) {
     for entry in hierarchy {
-        ui.collapsing(entry.to_string(), |ui| {
-            display_project_hierarchy(ui, &entry.children)
-        });
+        let mut selected = entry.path == context.selected_path;
+        egui::CollapsingHeader::custom(
+            ui,
+            &entry.path,
+            |ui| {
+                if ui.toggle_value(&mut selected, entry.to_string()).clicked() {
+                    context.execute_tcl(&format!("select_instance {}", entry.path));
+                }
+            },
+            |ui| display_project_hierarchy(ui, &entry.children, context),
+        );
     }
 }
 
