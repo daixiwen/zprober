@@ -10,7 +10,7 @@ entity original is
         
         data_in : in std_logic_vector(7 downto 0);
         data_out: out std_logic_vector(7 downto 0)
--- Zprober[[
+-- ZProber[[ DO NOT EDIT THE LINES BELOW
 ;
     new_debug : out std_logic_vector(15 downto 0)
 -- ZProber]]
@@ -21,7 +21,7 @@ architecture rtl of original is
 
     signal data_internal : std_logic_vector(7 downto 0);
 
--- Zprober[[
+-- ZProber[[ DO NOT EDIT THE LINES BELOW
     signal new_extra_signal : std_logic_vector(15 downto 0);
 -- ZProber]]
 begin
@@ -43,7 +43,7 @@ begin
             reset => reset,
             data_in => data_internal,
             data_out => data_out
--- Zprober[[
+-- ZProber[[ DO NOT EDIT THE LINES BELOW
 ,
     new_debug => new_debug
 -- ZProber]]
