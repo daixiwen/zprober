@@ -19,7 +19,7 @@
           <Component Id='MainExecutable' Guid='B82F0372-A4E4-4928-A219-F87A631D90B8'>
             <File Id='ZPROBEREXE' Name='zprober.exe' DiskId='1' Source='..\target\x86_64-pc-windows-msvc\release\zprober.exe' KeyPath='yes'>
               <Shortcut Id="startmenuzprober" Directory="ProgramMenuDir" Name="ZProber" WorkingDirectory='INSTALLDIR' 
-                /><!--Icon="icon.ico" IconIndex="0" Advertise="yes" -->
+                Icon="icon.ico" IconIndex="0" Advertise="yes" />
             </File>
           </Component>
         </Directory>
@@ -40,7 +40,7 @@
       <ComponentRef Id='ProgramMenuDir' />
     </Feature>
     
-    <!--Icon Id="icon.ico" SourceFile="icon.ico" /-->
+    <Icon Id="icon.ico" SourceFile="icon.ico" />
     
     <Property Id="WIXUI_INSTALLDIR" Value="ZPROBERINSTALLDIR" />
     <UI>
