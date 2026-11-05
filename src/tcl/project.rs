@@ -6,7 +6,7 @@ use molt::{ContextID, Exception, Interp, MoltResult, Value, check_args, molt_err
 use std::path::PathBuf;
 
 /// Describes an entry in the project hierarchy
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ProjectEntry {
     /// entry path
     pub path: String,
@@ -88,7 +88,7 @@ fn cmd_import_vhdl_ls(interp: &mut Interp, context_id: ContextID, argv: &[Value]
         )?;
     }
 
-    let project_entries: Vec<ProjectEntry> = top_levels
+    tcl_data.project_entries = top_levels
         .iter()
         .map(|top_level| ProjectEntry {
             path: String::new(),
@@ -99,7 +99,7 @@ fn cmd_import_vhdl_ls(interp: &mut Interp, context_id: ContextID, argv: &[Value]
         })
         .collect();
 
-    tcl_data.send_new_hierarchy(project_entries);
+    tcl_data.send_new_hierarchy(tcl_data.project_entries.clone());
     molt_ok!()
 }
 
@@ -124,12 +124,50 @@ fn create_children_entries(
         .collect()
 }
 
+/// look for a project entry with a given path, looking through all children
+/// If everything is right, should return only one element
+fn find_project_entry(entries: Vec<ProjectEntry>, instance_path: &str) -> Vec<ProjectEntry> {
+    let found_entities: Vec<ProjectEntry> = entries
+        .iter()
+        .filter(|entry| {
+            tracing::event!(tracing::Level::DEBUG, "looking into {}", entry.path);
+            entry.path == instance_path})
+        .map(|entry| entry.clone())
+        .collect();
+
+    entries.iter().fold(found_entities, | entities, parent| [ entities, find_project_entry(parent.children.clone(), instance_path)].concat())
+}
+
 /// select an instance in the project
 fn cmd_select_instance(interp: &mut Interp, context_id: ContextID, argv: &[Value]) -> MoltResult {
     check_args(1, argv, 2, 2, "instance_path")?;
     let tcl_data: &mut Data = interp.context(context_id);
     let instance_path = argv[1].to_string();
 
-    tcl_data.send_selected_instance(instance_path);
-    molt_ok!()
+    // find the path in our list
+    let found_entities=  find_project_entry(tcl_data.project_entries.clone(),&instance_path);
+
+    if found_entities.is_empty() {
+        molt_err!(format!("entity {instance_path} not found"))
+    } else {
+        if found_entities.len() > 1 {
+            tracing::event!(
+                tracing::Level::ERROR,
+                "found {} different entries with path {}",
+                found_entities.len(),
+                instance_path
+            );
+        }
+        let signals_and_ports = if let Some(hierarchy) = &tcl_data.vhdl_hierarchy {
+            let entry = found_entities.first().unwrap();
+            hierarchy.ports_and_signals(QualifiedName {
+                library: entry.library.clone(),
+                name: entry.entity.clone(),
+            })
+        } else {
+            Vec::new()
+        };
+        tcl_data.send_selected_instance(instance_path, signals_and_ports);
+        molt_ok!()
+    }
 }

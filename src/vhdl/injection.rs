@@ -212,9 +212,15 @@ pub fn remove_injections(source: &str) -> Result<String, String> {
 fn block_text(code: &str, trailing_newline: bool) -> String {
     let code = code.trim_matches(|c: char| c == '\n' || c == '\r');
     if trailing_newline {
-        format!("{} {}\n{}\n{}\n", START_MARKER, WARNING_IN_MARKER ,code, END_MARKER)
+        format!(
+            "{} {}\n{}\n{}\n",
+            START_MARKER, WARNING_IN_MARKER, code, END_MARKER
+        )
     } else {
-        format!("{} {}\n{}\n{}", START_MARKER, WARNING_IN_MARKER, code, END_MARKER)
+        format!(
+            "{} {}\n{}\n{}",
+            START_MARKER, WARNING_IN_MARKER, code, END_MARKER
+        )
     }
 }
 
@@ -469,7 +475,7 @@ mod tests {
         assert_eq!(result, read("modified_1_out.vhd"));
     }
 
-    /// re-injecting into a file that already contains blocks replaces 
+    /// re-injecting into a file that already contains blocks replaces
     /// them (the marker lines may carry trailing content)
     #[test]
     fn test_inject_replaces_existing_blocks() {

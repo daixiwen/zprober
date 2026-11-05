@@ -78,6 +78,19 @@ pub struct DesignUnit {
     pub name: String,
     /// For architectures, the name of the entity they belong to
     pub entity: Option<String>,
+    /// for entities, port list, for architectures, signals list
+    pub signals: Vec<Signal>,
+}
+
+/// a port or a signal
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Signal {
+    /// the signal name
+    pub name: String,
+    /// the signal type
+    pub signal_type: String,
+    /// the signal size in bits
+    pub size: u32,
 }
 
 impl DesignUnit {
@@ -224,6 +237,16 @@ impl Hierarchy {
             .collect()
     }
 
+    /// get a list of ports and signals in an entity
+    pub fn ports_and_signals(&self, entity: QualifiedName) -> Vec<Signal> {
+        self.units
+            .iter()
+            .filter(|u| u.qualified_name() == entity)
+            .fold(Vec::new(), |signals, unit| {
+                [signals, unit.signals.clone()].concat()
+            })
+    }
+
     /// get a list of entities who instantiate a fpgacapzero core, from a list of names
     pub fn capz_instantiators(&self, cores_names: Vec<String>) -> Vec<&Instantiation> {
         self.instantiations
@@ -244,13 +267,17 @@ fn process_design_file(
     for (_, design_unit) in &design_file.design_units {
         match design_unit {
             AnyDesignUnit::Primary(primary) => {
-                if let AnyPrimaryUnit::Entity(EntityDeclaration { ident, .. }) = primary {
+                if let AnyPrimaryUnit::Entity(EntityDeclaration {
+                    ident, port_clause, ..
+                }) = primary
+                {
                     units.push(DesignUnit {
                         library: library.to_string(),
                         file: file.to_path_buf(),
                         kind: DesignUnitKind::Entity,
                         name: ident.tree.item.to_string(),
                         entity: None,
+                        signals: find_ports(port_clause),
                     });
                 }
             }
@@ -260,6 +287,7 @@ fn process_design_file(
                     ident,
                     entity_name,
                     statements,
+                    decl,
                     ..
                 }) = secondary
                 {
@@ -270,6 +298,7 @@ fn process_design_file(
                         kind: DesignUnitKind::Architecture,
                         name: ident.tree.item.to_string(),
                         entity: Some(entity_name.clone()),
+                        signals: find_signals(decl),
                     });
                     let mut walker = InstantiationWalker {
                         library,
@@ -281,6 +310,49 @@ fn process_design_file(
             }
         }
     }
+}
+
+/// find the ports from a list
+fn find_ports(port_clause: &Option<vhdl_lang::ast::InterfaceList>) -> Vec<Signal> {
+    let mut ports: Vec<Signal> = Vec::new();
+
+    if let Some(interfaces) = port_clause {
+        for item in &interfaces.items {
+            if let vhdl_lang::ast::InterfaceDeclaration::Object(object) = item
+                && object.list_type == vhdl_lang::ast::InterfaceType::Port
+                && let vhdl_lang::ast::ModeIndication::Simple(simple) = &object.mode
+            {
+                for name in &object.idents {
+                    ports.push(Signal {
+                        name: name.to_string(),
+                        signal_type: simple.to_string(),
+                        size: 0,
+                    });
+                }
+            }
+        }
+    }
+    ports
+}
+
+fn find_signals(
+    declarations: &Vec<vhdl_lang::ast::token_range::WithTokenSpan<vhdl_lang::ast::Declaration>>,
+) -> Vec<Signal> {
+    let mut signals: Vec<Signal> = Vec::new();
+
+    for declaration in declarations {
+        if let vhdl_lang::ast::Declaration::Object(object) = &declaration.item {
+            let signal_type = object.subtype_indication.to_string();
+            for name in &object.idents {
+                signals.push(Signal {
+                    name: name.to_string(),
+                    signal_type: signal_type.clone(),
+                    size: 0,
+                });
+            }
+        }
+    }
+    signals
 }
 
 /// A walker that recursively traverses concurrent statements to find instantiations

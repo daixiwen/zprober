@@ -29,6 +29,9 @@ pub struct ZProberAppContext {
 
     #[serde(skip)]
     pub selected_path: String,
+
+    #[serde(skip)]
+    pub signals: Vec<crate::vhdl::hierarchy::Signal>,
 }
 
 impl ZProberAppContext {
@@ -53,6 +56,7 @@ impl Default for ZProberAppContext {
             tcl: Default::default(),
             project_entries: Default::default(),
             selected_path: Default::default(),
+            signals: Default::default(),
         }
     }
 }
@@ -138,8 +142,9 @@ impl eframe::App for ZProberApp {
                 MsgFromTcl::ResetGuiLayout => {
                     self.tiles_tree = create_tree();
                 }
-                MsgFromTcl::SelectInstance(new_path) => {
+                MsgFromTcl::SelectInstance(new_path, signals) => {
                     self.context.selected_path = new_path;
+                    self.context.signals = signals;
                 }
             }
         }

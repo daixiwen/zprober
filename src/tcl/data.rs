@@ -10,6 +10,8 @@ pub struct Data {
 
     pub vhdl_project: Option<crate::vhdl::Project>,
     pub vhdl_hierarchy: Option<crate::vhdl::Hierarchy>,
+
+    pub project_entries: Vec<crate::tcl::project::ProjectEntry>,
 }
 
 impl Data {
@@ -19,6 +21,7 @@ impl Data {
             egui_ctx: None,
             vhdl_project: None,
             vhdl_hierarchy: None,
+            project_entries: Vec::new(),
         }
     }
 
@@ -53,7 +56,11 @@ impl Data {
         self.send_msg(MsgFromTcl::ResetGuiLayout);
     }
 
-    pub fn send_selected_instance(&self, instance_path: String) {
-        self.send_msg(MsgFromTcl::SelectInstance(instance_path));
+    pub fn send_selected_instance(
+        &self,
+        instance_path: String,
+        signals: Vec<crate::vhdl::hierarchy::Signal>,
+    ) {
+        self.send_msg(MsgFromTcl::SelectInstance(instance_path, signals));
     }
 }
