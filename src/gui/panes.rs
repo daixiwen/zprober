@@ -11,6 +11,7 @@ pub enum Pane {
     Tracing,
     Console,
     Hierarchy,
+    Signals
 }
 
 /// display the complete tiles tree
@@ -52,6 +53,7 @@ impl<'a> egui_tiles::Behavior<Pane> for MyBehavior<'a> {
             Pane::Tracing => "Tracing".into(),
             Pane::Console => "TCL".into(),
             Pane::Hierarchy => "Hierarchy".into(),
+            Pane::Signals => "Signals".into()
         }
     }
 
@@ -76,7 +78,12 @@ impl<'a> egui_tiles::Behavior<Pane> for MyBehavior<'a> {
                 };
             }
             Pane::Hierarchy => {
-                display_project_hierarchy(ui, &self.context.project_entries, self.context);
+                egui::ScrollArea::both().show(ui, |ui| {
+                    display_project_hierarchy(ui, &self.context.project_entries, self.context);
+                });
+            }
+            Pane::Signals => {
+                super::signals::panel(ui, &self.context);
             }
         }
 

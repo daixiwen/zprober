@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 eframe = { version = "0.37.0", features = ["persistence"] }
 egui = "0.37.0"
+egui_extras = "0.37.0"
 egui_tiles = "0.18.0"
 egui_tracing = "0.3.0"
 glob = "0.3.1"

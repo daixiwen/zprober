@@ -71,6 +71,7 @@ fn create_tree() -> egui_tiles::Tree<panes::Pane> {
         tiles.insert_pane(panes::Pane::Tracing),
         tiles.insert_pane(panes::Pane::Console),
         tiles.insert_pane(panes::Pane::Hierarchy),
+        tiles.insert_pane(panes::Pane::Signals),
     ];
     let root: egui_tiles::TileId = tiles.insert_tab_tile(tabs);
 
