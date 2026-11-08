@@ -7,6 +7,6 @@ pub mod injection;
 /// Instantiation hierarchy built from a VHDL project
 pub mod hierarchy;
 
-pub use hierarchy::{DesignUnit, DesignUnitKind, Hierarchy, Instantiation, QualifiedName};
+pub use hierarchy::{DesignUnit, DesignUnitKind, Hierarchy, Instantiation, QualifiedName, Signal, SignalMode};
 pub use injection::{InjectionPoints, inject, remove_injections};
 pub use project::{Library, Project};

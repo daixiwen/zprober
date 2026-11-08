@@ -1,4 +1,4 @@
-use crate::vhdl::{Hierarchy, QualifiedName, hierarchy};
+use crate::vhdl::{Hierarchy, QualifiedName, hierarchy, Signal, SignalMode};
 
 /// load a project tcl function
 use super::data::Data;
@@ -210,7 +210,7 @@ fn cmd_select_instance(interp: &mut Interp, context_id: ContextID, argv: &[Value
             );
         }
         let entry = found_entities.first().unwrap();
-        let mut signals_and_ports = if let Some(hierarchy) = &tcl_data.vhdl_hierarchy {
+        let signals_and_ports = if let Some(hierarchy) = &tcl_data.vhdl_hierarchy {
             hierarchy.ports_and_signals(QualifiedName {
                 library: entry.library.clone(),
                 name: entry.entity.clone(),
@@ -222,24 +222,33 @@ fn cmd_select_instance(interp: &mut Interp, context_id: ContextID, argv: &[Value
         // go through each signal and port and try to find them in the ghdl synthesis
         let ghdl_inputs = entry.ghdl_module.inputs();
         let ghdl_outputs = entry.ghdl_module.outputs();
-        let ghdl_signals : Vec<ghdl_sys::Port> = Vec::default();
-        for sig in signals_and_ports.iter_mut() {
-            // try to find the signal in the ghdl synthesis
-            let ghdl_list = match sig.mode {
-                crate::vhdl::hierarchy::SignalMode::In => &ghdl_inputs,
-                crate::vhdl::hierarchy::SignalMode::Out => &ghdl_outputs,
-                crate::vhdl::hierarchy::SignalMode::InOut => &ghdl_outputs,
-                _ => &ghdl_signals
-            };
-/*             if let Some(ghdl_signal) = ghdl_list.iter().find(|port| port.name == sig.name) {
-                sig.size = ghdl_signal.width;
-            }
-*/
-            let begin_pattern = format!("{}[",sig.name);
-            sig.size = ghdl_list.iter().fold(0, | size, ghdl_sig | {
-                size + if (ghdl_sig.name == sig.name) || (ghdl_sig.name.starts_with(&begin_pattern)) { ghdl_sig.width } else { 0 }
-            });
-        }
+        let ghdl_signals = entry.ghdl_module.signals();
+        let signals_and_ports: Vec<Signal> = signals_and_ports
+            .iter()
+            .map(|signal| {
+                // try to find the signal in the ghdl synthesis
+                let ghdl_list = match signal.mode {
+                    SignalMode::In => &ghdl_inputs,
+                    SignalMode::Out => &ghdl_outputs,
+                    SignalMode::InOut => &ghdl_outputs,
+                    _ => &ghdl_signals
+                };
+
+                let begin_pattern = format!("{}[",signal.name);
+                let new_size = ghdl_list.iter().fold(0, | size, ghdl_sig | {
+                    size + if (ghdl_sig.name == signal.name) || (ghdl_sig.name.starts_with(&begin_pattern)) { ghdl_sig.width } else { 0 }
+                });
+
+                Signal {
+                    name: signal.name.clone(),
+                    mode: signal.mode.clone(),
+                    signal_type: signal.signal_type.clone(),
+                    size: new_size
+                }})
+                    // take away signals and ports with null width (possibly optimized away)
+            .filter(|sig| sig.size > 0)
+            .collect();
+
         tcl_data.send_selected_instance(instance_path, signals_and_ports);
         molt_ok!()
     }

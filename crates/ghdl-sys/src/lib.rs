@@ -654,29 +654,32 @@ impl Module {
         parse_module_name(&self.name())
     }
 
-    /// Input ports.
-    ///
-    /// Note: `inout` ports are present in the *outputs* list (GHDL counts
-    /// them as outputs), so input ports are never `inout`.
+    /// Input ports (never `inout`: inout ports are reported among the
+    /// outputs, see [`Module::outputs`]).
     pub fn inputs(&self) -> Vec<Port> {
         let n = unsafe { ffi::netlists__get_nbr_inputs(self.0) };
         (0..n)
             .map(|i| Port {
                 name: unsafe { sname_to_string(ffi::netlists__utils__get_input_name(self.0, i)) },
                 width: unsafe { ffi::netlists__utils__get_input_width(self.0, i) },
-                inout: false,
+                dir: PortDir::In,
             })
             .collect()
     }
 
-    /// Output ports.  `inout` ports are reported here (with `inout` set).
+    /// Output ports.  `inout` ports are reported here (with
+    /// [`PortDir::Inout`]).
     pub fn outputs(&self) -> Vec<Port> {
         let n = unsafe { ffi::netlists__get_nbr_outputs(self.0) };
         (0..n)
             .map(|i| Port {
                 name: unsafe { sname_to_string(ffi::netlists__utils__get_output_name(self.0, i)) },
                 width: unsafe { ffi::netlists__utils__get_output_width(self.0, i) },
-                inout: unsafe { ffi::netlists__utils__get_inout_flag(self.0, i) & 1 != 0 },
+                dir: if unsafe { ffi::netlists__utils__get_inout_flag(self.0, i) & 1 != 0 } {
+                    PortDir::Inout
+                } else {
+                    PortDir::Out
+                },
             })
             .collect()
     }
@@ -692,7 +695,8 @@ impl Module {
             .collect()
     }
 
-    /// User-declared signals of this module.
+    /// User-declared signals of this module, as [`Port`] values with
+    /// [`PortDir::Signal`].
     ///
     /// In the netlist, a declared signal is represented by an instance of
     /// the internal `signal` (with driver) or `isignal` (initial value
@@ -704,7 +708,7 @@ impl Module {
     /// - GHDL-generated port-fitting signals use the `wrap_` name prefix;
     /// - record signals are decomposed per element (the element name
     ///   appears in brackets, e.g. `rec[elem]`).
-    pub fn signals(&self) -> Vec<Signal> {
+    pub fn signals(&self) -> Vec<Port> {
         //  Id_Signal / Id_Isignal from netlists-gates.ads.
         const ID_SIGNAL: u32 = 52;
         const ID_ISIGNAL: u32 = 53;
@@ -719,7 +723,11 @@ impl Module {
                 continue;
             }
             let width = inst.output_net(0).map(|n| n.width()).unwrap_or(0);
-            res.push(Signal { name, width });
+            res.push(Port {
+                name,
+                width,
+                dir: PortDir::Signal,
+            });
         }
         res
     }
@@ -749,14 +757,45 @@ impl Module {
     }
 }
 
-/// A port of a module.
+/// Direction/kind of a [`Port`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PortDir {
+    /// Input port.
+    In,
+    /// Output port.
+    Out,
+    /// `inout` port (reported among the outputs).
+    Inout,
+    /// Internal declared signal (not a port).
+    Signal,
+}
+
+/// A named connection of a module: either a port ([`PortDir::In`],
+/// [`PortDir::Out`] or [`PortDir::Inout`]) or an internal declared signal
+/// ([`PortDir::Signal`]).
 #[derive(Clone, Debug)]
 pub struct Port {
     pub name: String,
     /// Width in bits.
     pub width: u32,
+    pub dir: PortDir,
+}
+
+impl Port {
     /// True for `inout` ports.
-    pub inout: bool,
+    pub fn is_inout(&self) -> bool {
+        self.dir == PortDir::Inout
+    }
+
+    /// True if this is a module port (input, output or inout).
+    pub fn is_port(&self) -> bool {
+        self.dir != PortDir::Signal
+    }
+
+    /// True if this is an internal declared signal.
+    pub fn is_signal(&self) -> bool {
+        self.dir == PortDir::Signal
+    }
 }
 
 /// A generic parameter of a module.
@@ -765,16 +804,6 @@ pub struct Param {
     pub name: String,
     /// `Param_Type` value from `netlists.ads` (0 = invalid, 1 = Uns32, ...).
     pub kind: u32,
-}
-
-/// A user-declared signal inside a module.
-#[derive(Clone, Debug)]
-pub struct Signal {
-    /// Declared name.  Signals declared inside generate loops or blocks
-    /// get a scope prefix (e.g. `gen_x.sig`).
-    pub name: String,
-    /// Width in bits.
-    pub width: u32,
 }
 
 /// An instance in a module: either an instantiated sub-module (an entity

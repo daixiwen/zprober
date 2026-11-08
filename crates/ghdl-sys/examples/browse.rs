@@ -30,7 +30,7 @@ fn print_module(m: Module, indent: usize, seen: &mut Vec<u32>) {
             "{pad}  port in : {} [{}{}]",
             p.name,
             p.width,
-            if p.inout { ", inout" } else { "" }
+            if p.is_inout() { ", inout" } else { "" }
         );
     }
     for p in m.outputs() {
@@ -38,7 +38,7 @@ fn print_module(m: Module, indent: usize, seen: &mut Vec<u32>) {
             "{pad}  port out: {} [{}{}]",
             p.name,
             p.width,
-            if p.inout { ", inout" } else { "" }
+            if p.is_inout() { ", inout" } else { "" }
         );
     }
     for p in m.params() {

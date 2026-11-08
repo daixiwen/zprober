@@ -340,7 +340,7 @@ fn find_ports(port_clause: &Option<vhdl_lang::ast::InterfaceList>) -> Vec<Signal
                     },
                     _ => SignalMode::Unknown
                 };
-                let signal_type = simple.subtype_indication.to_string();
+                let signal_type = simple.subtype_indication.type_mark.to_string();
                 for name in &object.idents {
                     ports.push(Signal {
                         name: name.to_string(),
@@ -362,7 +362,7 @@ fn find_signals(
 
     for declaration in declarations {
         if let vhdl_lang::ast::Declaration::Object(object) = &declaration.item {
-            let signal_type = object.subtype_indication.to_string();
+            let signal_type = object.subtype_indication.type_mark.to_string();
             for name in &object.idents {
                 signals.push(Signal {
                     name: name.to_string(),
