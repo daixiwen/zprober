@@ -66,6 +66,15 @@ impl Project {
         }
     }
 
+    /// convert vhdl_lang's VHDL standard to a string for ghdl
+    fn to_ghdl_standard(standard: vhdl_lang::VHDLStandard) -> &'static str {
+        match standard {
+            VHDLStandard::VHDL1993 => "93",
+            VHDLStandard::VHDL2008 => "08",
+            VHDLStandard::VHDL2019 => "19",
+        }
+    }
+    
     /// Build a project from a `vhdl_ls.toml` file.
     ///
     /// File paths in the configuration can be absolute, or relative to the
@@ -108,11 +117,7 @@ impl Project {
                 ));
             }
         };
-        let ghdl_standard = match standard {
-            VHDLStandard::VHDL1993 => "93",
-            VHDLStandard::VHDL2008 => "08",
-            VHDLStandard::VHDL2019 => "19",
-        };
+        let ghdl_standard = Self::to_ghdl_standard(standard);
         let mut ghdl_import: Vec<ImportGroup> = Vec::new();
 
         let mut project = Self::new(root_dir, workdir, ghdl);
@@ -161,24 +166,25 @@ impl Project {
             .ghdl_lib
             .compile()
             .map_err(|e| format!("Error at GHDL compile: {e}"))?;
-        let design = project
+
+        Ok(project)
+    }
+
+    /// synthesize the project in ghdl and return the synthesized design
+    pub fn ghdl_synthesize(&self, top_level: &str) -> Result<ghdl_sys::Design, String> {
+        self
             .ghdl_lib
             .synth(&SynthOptions {
-                std: ghdl_standard.to_owned(),
-                workdir: Some(project.ghdl_temp_dir.path().to_owned()),
-                library_paths: vec![project.ghdl_temp_dir.path().to_owned()],
+                std: Self::to_ghdl_standard(self.standard).to_owned(),
+                workdir: Some(self.ghdl_temp_dir.path().to_owned()),
+                library_paths: vec![self.ghdl_temp_dir.path().to_owned()],
                 files: vec![],
-                top: "fpgan32.toplevel".to_string(),
+                top: top_level.to_string(),
                 latches: true,
                 keep_hierarchy: None,
                 top_name: None,
             })
-            .map_err(|e| format!("error at GHDL synthesize: {e}"))?;
-
-        for module in design.modules() {
-            tracing::event!(tracing::Level::DEBUG, "GHDL module {}", module.name());
-        }
-        Ok(project)
+            .map_err(|e| format!("error at GHDL synthesize: {e}"))
     }
 
     /// Resolve a path relative to the project root directory.

@@ -4,6 +4,7 @@ use crate::vhdl::{Hierarchy, QualifiedName, hierarchy};
 use super::data::Data;
 use molt::{ContextID, Exception, Interp, MoltResult, Value, check_args, molt_err, molt_ok};
 use std::path::PathBuf;
+use std::collections::BTreeMap;
 
 /// Describes an entry in the project hierarchy
 #[derive(Debug, Clone)]
@@ -16,6 +17,8 @@ pub struct ProjectEntry {
     pub library: String,
     /// entity name
     pub entity: String,
+    /// ghdl module
+    pub ghdl_module : ghdl_sys::Module,
     /// list of instantiated entities
     pub children: Vec<ProjectEntry>,
 }
@@ -88,16 +91,27 @@ fn cmd_import_vhdl_ls(interp: &mut Interp, context_id: ContextID, argv: &[Value]
         )?;
     }
 
-    tcl_data.project_entries = top_levels
+    //tcl_data.project_entries = 
+    let entries : Result<Vec<ProjectEntry>, String> = top_levels
         .iter()
-        .map(|top_level| ProjectEntry {
-            path: String::new(),
-            label: String::new(),
-            library: top_level.parent.library.clone(),
-            entity: top_level.parent.name.clone(),
-            children: create_children_entries(hierarchy, &top_level.parent, ""),
+        .map(|top_level| {
+            let design = tcl_data.vhdl_project.as_ref().unwrap().ghdl_synthesize(&top_level.parent.to_string())?;
+            let top_entity = design.top_entity();
+            Ok(ProjectEntry {
+                path: String::new(),
+                label: String::new(),
+                library: top_level.parent.library.clone(),
+                entity: top_level.parent.name.clone(),
+                ghdl_module : top_entity,
+                children: create_children_entries(hierarchy, &top_level.parent, "", &top_entity),
+            })
         })
         .collect();
+    
+    tcl_data.project_entries = match entries {
+        Ok(parsed_entries) => parsed_entries,
+        Err(msg) => molt_err!("error while synthesizing project: {}", msg)?
+    };
 
     tcl_data.send_new_hierarchy(tcl_data.project_entries.clone());
     molt_ok!()
@@ -107,20 +121,51 @@ fn create_children_entries(
     hierarchy: &Hierarchy,
     parent: &QualifiedName,
     parent_path: &str,
+    ghdl_entity: &ghdl_sys::Module
 ) -> Vec<ProjectEntry> {
+
+    tracing::event!(tracing::Level::DEBUG, "looking into childrens of {}", parent);
+
+    let ghdl_instances : BTreeMap<String, ghdl_sys::Module> = ghdl_entity.instances()
+        .iter()
+        .map(|instance| 
+            (
+            instance.name(),
+            instance.module()
+        ))
+        .collect();
+
     hierarchy
         .children_of(parent)
         .iter()
         .map(|instantiation| {
+            // we need to convert from an Instantiation object from the vhdl module to something
+            // useful for the GUI: a ProjectEntry
             let path = format!("{}.{}", parent_path, instantiation.label);
-            ProjectEntry {
-                path: path.clone(),
-                label: instantiation.label.clone(),
-                library: instantiation.child.library.clone(),
-                entity: instantiation.child.name.clone(),
-                children: create_children_entries(hierarchy, &instantiation.child, &path),
+            let ghdl_label = instantiation.label.replace(".", "_");
+
+            // we'll only keep the instance if we also find it in the synthesized project
+            if let Some(child_module) = ghdl_instances.get(&ghdl_label) {
+                tracing::event!(tracing::Level::DEBUG, "found ghdl instance for {}", ghdl_label);
+
+                Some(            
+                    ProjectEntry {
+                        path: path.clone(),
+                        label: instantiation.label.clone(),
+                        library: instantiation.child.library.clone(),
+                        entity: instantiation.child.name.clone(),
+                        ghdl_module: child_module.to_owned(),
+                        children: create_children_entries(hierarchy, &instantiation.child, &path, child_module),
+                    }
+                )
+            } else {
+                tracing::event!(tracing::Level::DEBUG, "did not find ghdl instance for {}", ghdl_label);
+                None
             }
-        })
+        }) // remove the "None" entries
+        .filter(|instance| instance.is_some())
+          // and take them out of the option object
+        .map(|instance| instance.unwrap())
         .collect()
 }
 
@@ -129,10 +174,9 @@ fn create_children_entries(
 fn find_project_entry(entries: Vec<ProjectEntry>, instance_path: &str) -> Vec<ProjectEntry> {
     let found_entities: Vec<ProjectEntry> = entries
         .iter()
-        .filter(|entry| {
-            tracing::event!(tracing::Level::DEBUG, "looking into {}", entry.path);
+        .filter(|entry|
             entry.path == instance_path
-        })
+        )
         .cloned()
         .collect();
 
