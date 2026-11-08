@@ -3,7 +3,11 @@ name = "zprober"
 version = "0.1.0"
 edition = "2024"
 
+[workspace]
+members = ["crates/ghdl-sys"]
+
 [dependencies]
+ghdl-sys = { path = "crates/ghdl-sys" }
 eframe = { version = "0.37.0", features = ["persistence"] }
 egui = "0.37.0"
 egui_extras = "0.37.0"
@@ -15,6 +19,7 @@ serde = { version = "1.0.229", features = ["derive"] }
 toml = "0.8.19"
 tracing = "0.1.44"
 vhdl_lang = "0.88.0"
+tempdir = "0.3.7"
 
 [patch.crates-io]
 egui_tracing = { git = "https://github.com/daixiwen/egui_tracing.git", branch = "egui_0.37.0" }

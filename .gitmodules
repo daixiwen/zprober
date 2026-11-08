@@ -4,3 +4,6 @@
 [submodule "example/fpgacapzero"]
 	path = example/fpgacapzero
 	url = https://github.com/lcapossio/fpgacapZero.git
+[submodule "crates/ghdl-sys/ghdl"]
+	path = crates/ghdl-sys/ghdl
+	url = https://github.com/ghdl/ghdl.git

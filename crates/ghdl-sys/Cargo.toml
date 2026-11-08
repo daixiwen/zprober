@@ -1,0 +1,7 @@
+[package]
+name = "ghdl-sys"
+version = "0.1.0"
+edition = "2021"
+links = "ghdl"
+build = "build.rs"
+description = "Raw bindings to the GHDL shared library (libghdl): VHDL analysis and synthesis"

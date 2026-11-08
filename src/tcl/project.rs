@@ -131,11 +131,18 @@ fn find_project_entry(entries: Vec<ProjectEntry>, instance_path: &str) -> Vec<Pr
         .iter()
         .filter(|entry| {
             tracing::event!(tracing::Level::DEBUG, "looking into {}", entry.path);
-            entry.path == instance_path})
-        .map(|entry| entry.clone())
+            entry.path == instance_path
+        })
+        .cloned()
         .collect();
 
-    entries.iter().fold(found_entities, | entities, parent| [ entities, find_project_entry(parent.children.clone(), instance_path)].concat())
+    entries.iter().fold(found_entities, |entities, parent| {
+        [
+            entities,
+            find_project_entry(parent.children.clone(), instance_path),
+        ]
+        .concat()
+    })
 }
 
 /// select an instance in the project
@@ -145,7 +152,7 @@ fn cmd_select_instance(interp: &mut Interp, context_id: ContextID, argv: &[Value
     let instance_path = argv[1].to_string();
 
     // find the path in our list
-    let found_entities=  find_project_entry(tcl_data.project_entries.clone(),&instance_path);
+    let found_entities = find_project_entry(tcl_data.project_entries.clone(), &instance_path);
 
     if found_entities.is_empty() {
         molt_err!(format!("entity {instance_path} not found"))

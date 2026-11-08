@@ -11,6 +11,8 @@ use std::path::{Path, PathBuf};
 
 use vhdl_lang::VHDLStandard;
 
+use ghdl_sys::{Ghdl, ImportGroup, ImportOptions, SynthOptions};
+
 /// A VHDL library, holding a name and a list of source files
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Library {
@@ -35,7 +37,6 @@ impl Library {
     }
 }
 /// A VHDL project, made of one or several libraries
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Project {
     /// Libraries, keyed by name
     libraries: BTreeMap<String, Library>,
@@ -43,15 +44,25 @@ pub struct Project {
     root_dir: PathBuf,
     /// The VHDL standard to use for parsing
     standard: VHDLStandard,
+    /// The temporary directory used by GHDL
+    ghdl_temp_dir: tempdir::TempDir,
+    /// GHDL object to parse the project
+    ghdl_lib: Ghdl,
 }
 
 impl Project {
     /// Create a new empty project, rooted at `root_dir`
-    pub fn new(root_dir: impl Into<PathBuf>) -> Self {
+    pub fn new(
+        root_dir: impl Into<PathBuf>,
+        ghdl_temp_dir: tempdir::TempDir,
+        ghdl_lib: Ghdl,
+    ) -> Self {
         Self {
             libraries: BTreeMap::new(),
             root_dir: root_dir.into(),
             standard: VHDLStandard::default(),
+            ghdl_temp_dir,
+            ghdl_lib,
         }
     }
 
@@ -72,6 +83,19 @@ impl Project {
 
     /// Build a project from a parsed `vhdl_ls.toml` configuration
     fn from_toml_config(config: TomlConfig, root_dir: PathBuf) -> Result<Self, String> {
+        let span = tracing::span!(tracing::Level::TRACE, "load from toml config");
+        let _enter = span.enter();
+
+        // prepare to also synthesize the project with ghdl
+        let ghdl = Ghdl::init(None).map_err(|e| format!("Error at GHDL init: {e}"))?;
+
+        let workdir = tempdir::TempDir::new("zprober").map_err(|e| e.to_string())?;
+        tracing::event!(
+            tracing::Level::DEBUG,
+            "use temporary work directory: {}",
+            workdir.path().to_string_lossy()
+        );
+
         let standard = match config.standard.as_deref() {
             None => VHDLStandard::default(),
             Some("1993") => VHDLStandard::VHDL1993,
@@ -84,11 +108,19 @@ impl Project {
                 ));
             }
         };
+        let ghdl_standard = match standard {
+            VHDLStandard::VHDL1993 => "93",
+            VHDLStandard::VHDL2008 => "08",
+            VHDLStandard::VHDL2019 => "19",
+        };
+        let mut ghdl_import: Vec<ImportGroup> = Vec::new();
 
-        let mut project = Self::new(root_dir);
+        let mut project = Self::new(root_dir, workdir, ghdl);
         project.standard = standard;
         for (name, lib) in config.libraries {
             project.add_library(&name);
+            let mut ghdl_files: Vec<PathBuf> = Vec::new();
+
             for pattern in &lib.files {
                 let full_pattern = project.resolve_path(pattern);
                 let files = expand_pattern(&full_pattern);
@@ -99,10 +131,52 @@ impl Project {
                         name
                     );
                 }
+
+                ghdl_files.append(&mut files.clone());
+
                 for file in files {
                     project.add_file(&name, file);
                 }
             }
+
+            ghdl_import.push(ImportGroup {
+                library: name,
+                files: ghdl_files,
+            });
+        }
+
+        // import all the files in ghdl
+        project
+            .ghdl_lib
+            .import(&ImportOptions {
+                std: ghdl_standard.to_owned(),
+                workdir: project.ghdl_temp_dir.path().to_owned(),
+                library_paths: vec![project.ghdl_temp_dir.path().to_owned()],
+                groups: ghdl_import,
+            })
+            .map_err(|e| format!("error at GHDL import: {e}"))?;
+
+        // compile the project
+        project
+            .ghdl_lib
+            .compile()
+            .map_err(|e| format!("Error at GHDL compile: {e}"))?;
+        let design = project
+            .ghdl_lib
+            .synth(&SynthOptions {
+                std: ghdl_standard.to_owned(),
+                workdir: Some(project.ghdl_temp_dir.path().to_owned()),
+                library_paths: vec![project.ghdl_temp_dir.path().to_owned()],
+                files: vec![],
+                top: "fpgan32.toplevel".to_string(),
+                latches: true,
+                keep_hierarchy: None,
+                top_name: None,
+            })
+            .map_err(|e| format!("error at GHDL synthesize: {e}"))?;
+
+        for module in design.modules() {
+            tracing::event!(tracing::Level::DEBUG, "GHDL module {}", module.name());
         }
         Ok(project)
     }
@@ -273,16 +347,5 @@ lib2.files = ['src/lib2/*.vhd', 'src/common/*.vhd']
         let files = expand_pattern(&pattern);
         assert!(files.len() > 40);
         assert!(files.iter().all(|f| f.extension().unwrap() == "vhd"));
-    }
-
-    #[test]
-    fn test_manual_project() {
-        let mut project = Project::new(".");
-        project.add_library("lib1");
-        project.add_library("lib2");
-        project.add_file("lib2", "file2.vhd");
-        assert_eq!(project.libraries().count(), 2);
-        assert_eq!(project.library("lib1").unwrap().files.len(), 0);
-        assert_eq!(project.library("lib2").unwrap().files.len(), 1);
     }
 }

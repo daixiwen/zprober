@@ -1,14 +1,14 @@
-use egui_extras::{TableBuilder, Column};
+use egui_extras::{Column, TableBuilder};
 
 /// pane with the signals
 pub fn panel(ui: &mut egui::Ui, context: &crate::app::ZProberAppContext) {
-    let mut table = TableBuilder::new(ui)
+    let table = TableBuilder::new(ui)
         .striped(true)
         .resizable(true)
         .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
         .column(Column::auto())
         .column(Column::auto())
-//        .column(Column::remainder())
+        //        .column(Column::remainder())
         .column(Column::auto());
 
     table
@@ -33,10 +33,9 @@ pub fn panel(ui: &mut egui::Ui, context: &crate::app::ZProberAppContext) {
                         ui.label(&signal.signal_type);
                     });
                     row.col(|ui| {
-                        ui.label(format!("{}",signal.size));
+                        ui.label(format!("{}", signal.size));
                     });
                 })
             }
         });
-
 }
