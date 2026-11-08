@@ -45,6 +45,10 @@ fn print_module(m: Module, indent: usize, seen: &mut Vec<u32>) {
         println!("{pad}  generic : {} [kind {}]", p.name, p.kind);
     }
 
+    for s in m.signals() {
+        println!("{pad}  signal  : {} [{}]", s.name, s.width);
+    }
+
     //  Instances: entity instantiations and netlist gates.  User signal
     //  names appear as instance names.  Only entity instantiations are
     //  followed recursively (gate modules are system modules).

@@ -692,6 +692,38 @@ impl Module {
             .collect()
     }
 
+    /// User-declared signals of this module.
+    ///
+    /// In the netlist, a declared signal is represented by an instance of
+    /// the internal `signal` (with driver) or `isignal` (initial value
+    /// only) gate, named after the signal declaration; the signal net is
+    /// the output 0 of that instance, which gives the width.
+    ///
+    /// Notes:
+    /// - signals that are optimized away (unused) do not appear;
+    /// - GHDL-generated port-fitting signals use the `wrap_` name prefix;
+    /// - record signals are decomposed per element (the element name
+    ///   appears in brackets, e.g. `rec[elem]`).
+    pub fn signals(&self) -> Vec<Signal> {
+        //  Id_Signal / Id_Isignal from netlists-gates.ads.
+        const ID_SIGNAL: u32 = 52;
+        const ID_ISIGNAL: u32 = 53;
+        let mut res = Vec::new();
+        for inst in self.instances() {
+            let id = inst.module().id();
+            if id != ID_SIGNAL && id != ID_ISIGNAL {
+                continue;
+            }
+            let name = inst.name();
+            if name.is_empty() || name.starts_with('*') {
+                continue;
+            }
+            let width = inst.output_net(0).map(|n| n.width()).unwrap_or(0);
+            res.push(Signal { name, width });
+        }
+        res
+    }
+
     /// Direct sub-modules (the entities instantiated by this module).
     pub fn sub_modules(&self) -> Vec<Module> {
         let mut res = Vec::new();
@@ -733,6 +765,16 @@ pub struct Param {
     pub name: String,
     /// `Param_Type` value from `netlists.ads` (0 = invalid, 1 = Uns32, ...).
     pub kind: u32,
+}
+
+/// A user-declared signal inside a module.
+#[derive(Clone, Debug)]
+pub struct Signal {
+    /// Declared name.  Signals declared inside generate loops or blocks
+    /// get a scope prefix (e.g. `gen_x.sig`).
+    pub name: String,
+    /// Width in bits.
+    pub width: u32,
 }
 
 /// An instance in a module: either an instantiated sub-module (an entity
