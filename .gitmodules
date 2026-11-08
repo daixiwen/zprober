@@ -6,4 +6,4 @@
 	url = https://github.com/lcapossio/fpgacapZero.git
 [submodule "crates/ghdl-sys/ghdl"]
 	path = crates/ghdl-sys/ghdl
-	url = https://github.com/ghdl/ghdl.git
+	url = https://github.com/daixiwen/ghdl.git
