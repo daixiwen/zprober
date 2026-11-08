@@ -87,10 +87,17 @@ pub struct DesignUnit {
 pub struct Signal {
     /// the signal name
     pub name: String,
+    /// mode (in, out, inout, buffer or signal)
+    pub mode: SignalMode,
     /// the signal type
     pub signal_type: String,
     /// the signal size in bits
     pub size: u32,
+}
+
+#[derive(Debug, strum::Display, Clone, PartialEq, Eq)]
+pub enum SignalMode {
+    In, Out, InOut, Buffer, Signal, Unknown
 }
 
 impl DesignUnit {
@@ -322,10 +329,23 @@ fn find_ports(port_clause: &Option<vhdl_lang::ast::InterfaceList>) -> Vec<Signal
                 && object.list_type == vhdl_lang::ast::InterfaceType::Port
                 && let vhdl_lang::ast::ModeIndication::Simple(simple) = &object.mode
             {
+
+                let mode = match &simple.mode {
+                    Some(port_mode) => match port_mode.item {
+                        vhdl_lang::ast::Mode::In => SignalMode::In,
+                        vhdl_lang::ast::Mode::Out => SignalMode::Out,
+                        vhdl_lang::ast::Mode::InOut => SignalMode::InOut,
+                        vhdl_lang::ast::Mode::Buffer => SignalMode::Buffer,
+                        _ => SignalMode::Unknown
+                    },
+                    _ => SignalMode::Unknown
+                };
+                let signal_type = simple.subtype_indication.to_string();
                 for name in &object.idents {
                     ports.push(Signal {
                         name: name.to_string(),
-                        signal_type: simple.to_string(),
+                        signal_type: signal_type.clone(),
+                        mode: mode.to_owned(),
                         size: 0,
                     });
                 }
@@ -347,6 +367,7 @@ fn find_signals(
                 signals.push(Signal {
                     name: name.to_string(),
                     signal_type: signal_type.clone(),
+                    mode: SignalMode::Signal,
                     size: 0,
                 });
             }

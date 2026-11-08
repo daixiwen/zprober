@@ -8,6 +8,7 @@ pub fn panel(ui: &mut egui::Ui, context: &crate::app::ZProberAppContext) {
         .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
         .column(Column::auto())
         .column(Column::auto())
+        .column(Column::auto())
         //        .column(Column::remainder())
         .column(Column::auto());
 
@@ -15,6 +16,9 @@ pub fn panel(ui: &mut egui::Ui, context: &crate::app::ZProberAppContext) {
         .header(20.0, |mut header| {
             header.col(|ui| {
                 ui.strong("Name");
+            });
+            header.col(|ui| {
+                ui.strong("Mode");
             });
             header.col(|ui| {
                 ui.strong("type");
@@ -28,6 +32,9 @@ pub fn panel(ui: &mut egui::Ui, context: &crate::app::ZProberAppContext) {
                 body.row(18.0, |mut row| {
                     row.col(|ui| {
                         ui.label(&signal.name);
+                    });
+                    row.col(|ui| {
+                        ui.label(&signal.mode.to_string());
                     });
                     row.col(|ui| {
                         ui.label(&signal.signal_type);

@@ -20,6 +20,7 @@ toml = "0.8.19"
 tracing = "0.1.44"
 vhdl_lang = "0.88.0"
 tempdir = "0.3.7"
+strum = "0.28.0"
 
 [patch.crates-io]
 egui_tracing = { git = "https://github.com/daixiwen/egui_tracing.git", branch = "egui_0.37.0" }

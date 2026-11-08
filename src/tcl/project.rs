@@ -169,7 +169,7 @@ fn create_children_entries(
         .collect()
 }
 
-/// look for a project entry with a given path, looking through all children
+/// look for a project entry with a given path, looking through all children.
 /// If everything is right, should return only one element
 fn find_project_entry(entries: Vec<ProjectEntry>, instance_path: &str) -> Vec<ProjectEntry> {
     let found_entities: Vec<ProjectEntry> = entries
@@ -209,8 +209,8 @@ fn cmd_select_instance(interp: &mut Interp, context_id: ContextID, argv: &[Value
                 instance_path
             );
         }
-        let signals_and_ports = if let Some(hierarchy) = &tcl_data.vhdl_hierarchy {
-            let entry = found_entities.first().unwrap();
+        let entry = found_entities.first().unwrap();
+        let mut signals_and_ports = if let Some(hierarchy) = &tcl_data.vhdl_hierarchy {
             hierarchy.ports_and_signals(QualifiedName {
                 library: entry.library.clone(),
                 name: entry.entity.clone(),
@@ -218,6 +218,28 @@ fn cmd_select_instance(interp: &mut Interp, context_id: ContextID, argv: &[Value
         } else {
             Vec::new()
         };
+
+        // go through each signal and port and try to find them in the ghdl synthesis
+        let ghdl_inputs = entry.ghdl_module.inputs();
+        let ghdl_outputs = entry.ghdl_module.outputs();
+        let ghdl_signals : Vec<ghdl_sys::Port> = Vec::default();
+        for sig in signals_and_ports.iter_mut() {
+            // try to find the signal in the ghdl synthesis
+            let ghdl_list = match sig.mode {
+                crate::vhdl::hierarchy::SignalMode::In => &ghdl_inputs,
+                crate::vhdl::hierarchy::SignalMode::Out => &ghdl_outputs,
+                crate::vhdl::hierarchy::SignalMode::InOut => &ghdl_outputs,
+                _ => &ghdl_signals
+            };
+/*             if let Some(ghdl_signal) = ghdl_list.iter().find(|port| port.name == sig.name) {
+                sig.size = ghdl_signal.width;
+            }
+*/
+            let begin_pattern = format!("{}[",sig.name);
+            sig.size = ghdl_list.iter().fold(0, | size, ghdl_sig | {
+                size + if (ghdl_sig.name == sig.name) || (ghdl_sig.name.starts_with(&begin_pattern)) { ghdl_sig.width } else { 0 }
+            });
+        }
         tcl_data.send_selected_instance(instance_path, signals_and_ports);
         molt_ok!()
     }
