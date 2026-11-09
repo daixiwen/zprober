@@ -749,8 +749,8 @@ fn resolve_library_name(name: &str, current: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vhdl_lang::{NullDiagnostics, Source, VHDLParser, VHDLStandard};
     use std::path::PathBuf;
+    use vhdl_lang::{NullDiagnostics, Source, VHDLParser, VHDLStandard};
 
     fn test_dir() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -760,7 +760,8 @@ mod tests {
 
     fn parse(vhdl_file_name: &str) -> DesignFile {
         let parser = VHDLParser::new(VHDLStandard::VHDL2008);
-        let source = Source::from_latin1_file(&test_dir().join(vhdl_file_name)).expect("error parsing file {vhdl_file_name}");
+        let source = Source::from_latin1_file(&test_dir().join(vhdl_file_name))
+            .expect("error parsing file {vhdl_file_name}");
         parser.parse_design_source(&source, &mut NullDiagnostics)
     }
 
@@ -786,10 +787,7 @@ mod tests {
 
     #[test]
     fn test_predefined_types() {
-        let resolver = build(
-            "test_predefined_types.vhd",
-            "work",
-        );
+        let resolver = build("test_predefined_types.vhd", "work");
         let types = resolver.resolve_unit("work", DesignUnitKind::Entity, "top");
         assert_eq!(types[0], std("std_logic"));
         assert_eq!(types[1], array_of(std("std_logic")));
@@ -801,11 +799,10 @@ mod tests {
 
     #[test]
     fn test_entity_local_types() {
-        let resolver = build(
-            "test_entity_local_types.vhd",
-            "work",
-        );
+        let resolver = build("test_entity_local_types.vhd", "work");
         let types = resolver.resolve_unit("work", DesignUnitKind::Entity, "top");
+        // The ports are declared in this order: rec (t_rec), arr (t_arr),
+        // state (t_state).
         assert_eq!(
             types[0],
             ResolvedType::Record {
@@ -817,12 +814,14 @@ mod tests {
                     },
                     RecordField {
                         name: "b".to_string(),
-                        resolved_type: types[0].clone(),
+                        // the enum t_state, resolved as types[2] below
+                        resolved_type: types[2].clone(),
                     },
                 ]
             }
         );
-        assert_eq!(types[1], array_of(types[1].clone()));
+        // t_arr is an array of the record t_rec
+        assert_eq!(types[1], array_of(types[0].clone()));
         assert_eq!(
             types[2],
             ResolvedType::Enum {
@@ -835,16 +834,11 @@ mod tests {
                 ]
             }
         );
-
-
     }
 
     #[test]
     fn test_package_types_and_use_clauses() {
-        let resolver = build(
-            "test_package_types_and_use_clauses.vhd",
-            "work",
-        );
+        let resolver = build("test_package_types_and_use_clauses.vhd", "work");
         let types = resolver.resolve_unit("work", DesignUnitKind::Entity, "top");
         let expected_record = ResolvedType::Record {
             name: "t_rec".to_string(),
@@ -878,10 +872,7 @@ mod tests {
 
     #[test]
     fn test_architecture_signals() {
-        let resolver = build(
-            "test_architecture_signals.vhd",
-            "work",
-        );
+        let resolver = build("test_architecture_signals.vhd", "work");
         let types = resolver.resolve_unit("work", DesignUnitKind::Architecture, "rtl");
         // `s1` uses a local record whose field is an array of the type
         // declared in the entity
@@ -904,16 +895,12 @@ mod tests {
         resolver.add_design_file(
             "l1",
             Path::new("pkg.vhd"),
-            &parse(
-                "test_cross_library_selected_name_l1.vhd",
-            ),
+            &parse("test_cross_library_selected_name_l1.vhd"),
         );
         resolver.add_design_file(
             "l2",
             Path::new("top.vhd"),
-            &parse(
-                "test_cross_library_selected_name_l2.vhd",
-            ),
+            &parse("test_cross_library_selected_name_l2.vhd"),
         );
         resolver.finalize();
         let types = resolver.resolve_unit("l2", DesignUnitKind::Entity, "top");
@@ -928,10 +915,7 @@ mod tests {
 
     #[test]
     fn test_context_declaration() {
-        let resolver = build(
-            "test_context_declaration.vhd",
-            "work",
-        );
+        let resolver = build("test_context_declaration.vhd", "work");
         let types = resolver.resolve_unit("work", DesignUnitKind::Entity, "top");
         assert_eq!(
             types[0],
@@ -944,10 +928,7 @@ mod tests {
 
     #[test]
     fn test_unknown_and_cycles() {
-        let resolver = build(
-            "test_unknown_and_cycles.vhd",
-            "work",
-        );
+        let resolver = build("test_unknown_and_cycles.vhd", "work");
         let types = resolver.resolve_unit("work", DesignUnitKind::Entity, "top");
         // cyclic access types cannot be resolved
         assert_eq!(
@@ -973,10 +954,7 @@ mod tests {
 
     #[test]
     fn test_display() {
-        let resolver = build(
-            "test_display.vhd",
-            "work",
-        );
+        let resolver = build("test_display.vhd", "work");
         let types = resolver.resolve_unit("work", DesignUnitKind::Entity, "top");
         assert_eq!(types[0].to_string(), "array of std_logic");
         assert_eq!(types[1].to_string(), "t_state (low, high)");
