@@ -276,7 +276,9 @@ fn ghdl_lock() -> MutexGuard<'static, ()> {
     //  Poisoning is irrelevant here: once a GHDL call misbehaves the
     //  library state is unusable anyway, and panics must not prevent the
     //  remaining sessions from taking their turn.
-    GHDL_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    GHDL_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -402,9 +404,8 @@ impl Ghdl {
         if st == State::Fresh {
             //  Loads the std library.  Must happen only once per process,
             //  even across several sessions (later sessions reuse it).
-            let status = *STANDARD_LIBRARIES_INIT.get_or_init(|| unsafe {
-                ffi::libghdl__analyze_init_status()
-            });
+            let status = *STANDARD_LIBRARIES_INIT
+                .get_or_init(|| unsafe { ffi::libghdl__analyze_init_status() });
             if status != 0 {
                 return Err(err("analysis initialization failed"));
             }

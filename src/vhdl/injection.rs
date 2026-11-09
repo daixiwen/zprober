@@ -271,7 +271,11 @@ pub fn remove_injections(source: &str) -> Result<String, String> {
 
     // Rebuild the text, preserving the line ending style and the presence
     // of a trailing newline
-    let newline = if source.contains("\r\n") { "\r\n" } else { "\n" };
+    let newline = if source.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    };
     let mut result = kept.join(newline);
     if source.ends_with('\n') {
         result.push_str(newline);
@@ -289,9 +293,15 @@ pub fn remove_injections(source: &str) -> Result<String, String> {
 fn block_text(code: &str, trailing_newline: bool) -> String {
     let code = code.trim_matches(|c: char| c == '\n' || c == '\r');
     if trailing_newline {
-        format!("{} {}\n{}\n{}\n", START_MARKER, WARNING_IN_MARKER, code, END_MARKER)
+        format!(
+            "{} {}\n{}\n{}\n",
+            START_MARKER, WARNING_IN_MARKER, code, END_MARKER
+        )
     } else {
-        format!("{} {}\n{}\n{}", START_MARKER, WARNING_IN_MARKER, code, END_MARKER)
+        format!(
+            "{} {}\n{}\n{}",
+            START_MARKER, WARNING_IN_MARKER, code, END_MARKER
+        )
     }
 }
 
@@ -487,10 +497,7 @@ fn walk_statements(
                         return Err(format!("instantiation '{}' has no port map", label));
                     };
                     let Some(last) = port_map.list.items.last() else {
-                        return Err(format!(
-                            "port map of instantiation '{}' is empty",
-                            label
-                        ));
+                        return Err(format!("port map of instantiation '{}' is empty", label));
                     };
                     let position = tokens.get_pos(last.actual.span.end_token).range.end;
                     edits.push(Edit::after_token(source, position, code)?);
@@ -504,10 +511,7 @@ fn walk_statements(
                         .unwrap();
                     if let Some(code) = &replacement.generic_map {
                         let Some(map) = &inst.generic_map else {
-                            return Err(format!(
-                                "instantiation '{}' has no generic map",
-                                label
-                            ));
+                            return Err(format!("instantiation '{}' has no generic map", label));
                         };
                         edits.push(Edit::replace_range(
                             source,
@@ -533,7 +537,14 @@ fn walk_statements(
         }
         match &statement.statement.item {
             ConcurrentStatement::Block(block) => {
-                walk_statements(source, tokens, &block.statements, points, edits, labels_found)?;
+                walk_statements(
+                    source,
+                    tokens,
+                    &block.statements,
+                    points,
+                    edits,
+                    labels_found,
+                )?;
             }
             ConcurrentStatement::ForGenerate(gen_stmt) => {
                 walk_statements(
@@ -617,9 +628,10 @@ fn apply_edits(mut source: String, mut edits: Vec<Edit>) -> Result<String, Strin
     // Apply from the end of the file backwards, so that the offsets of
     // the pending edits remain valid
     edits.sort_by_key(|edit| std::cmp::Reverse(edit.start));
-    if let Some(duplicate) = edits.windows(2).find(|pair| {
-        pair[1].start == pair[0].start || pair[1].end > pair[0].start
-    }) {
+    if let Some(duplicate) = edits
+        .windows(2)
+        .find(|pair| pair[1].start == pair[0].start || pair[1].end > pair[0].start)
+    {
         return Err(format!(
             "two edits overlapping at offset {}",
             duplicate[0].start
@@ -751,11 +763,10 @@ mod tests {
     #[test]
     fn test_unknown_map_replacement_is_rejected() {
         let source = read("original.vhd");
-        let points = InjectionPoints::default()
-            .with_instantiation_map_replacement(
-                "no_such_label",
-                MapReplacement::default().with_port_map(","),
-            );
+        let points = InjectionPoints::default().with_instantiation_map_replacement(
+            "no_such_label",
+            MapReplacement::default().with_port_map(","),
+        );
         assert!(inject(&source, &points).is_err());
     }
 

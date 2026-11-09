@@ -97,7 +97,12 @@ pub struct Signal {
 
 #[derive(Debug, strum::Display, Clone, PartialEq, Eq)]
 pub enum SignalMode {
-    In, Out, InOut, Buffer, Signal, Unknown
+    In,
+    Out,
+    InOut,
+    Buffer,
+    Signal,
+    Unknown,
 }
 
 impl DesignUnit {
@@ -329,16 +334,15 @@ fn find_ports(port_clause: &Option<vhdl_lang::ast::InterfaceList>) -> Vec<Signal
                 && object.list_type == vhdl_lang::ast::InterfaceType::Port
                 && let vhdl_lang::ast::ModeIndication::Simple(simple) = &object.mode
             {
-
                 let mode = match &simple.mode {
                     Some(port_mode) => match port_mode.item {
                         vhdl_lang::ast::Mode::In => SignalMode::In,
                         vhdl_lang::ast::Mode::Out => SignalMode::Out,
                         vhdl_lang::ast::Mode::InOut => SignalMode::InOut,
                         vhdl_lang::ast::Mode::Buffer => SignalMode::Buffer,
-                        _ => SignalMode::Unknown
+                        _ => SignalMode::Unknown,
                     },
-                    _ => SignalMode::Unknown
+                    _ => SignalMode::Unknown,
                 };
                 let signal_type = simple.subtype_indication.type_mark.to_string();
                 for name in &object.idents {

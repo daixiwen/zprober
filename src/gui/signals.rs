@@ -34,7 +34,7 @@ pub fn panel(ui: &mut egui::Ui, context: &crate::app::ZProberAppContext) {
                         ui.label(&signal.name);
                     });
                     row.col(|ui| {
-                        ui.label(&signal.mode.to_string());
+                        ui.label(signal.mode.to_string());
                     });
                     row.col(|ui| {
                         ui.label(&signal.signal_type);

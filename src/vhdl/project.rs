@@ -74,7 +74,7 @@ impl Project {
             VHDLStandard::VHDL2019 => "19",
         }
     }
-    
+
     /// Build a project from a `vhdl_ls.toml` file.
     ///
     /// File paths in the configuration can be absolute, or relative to the
@@ -172,8 +172,7 @@ impl Project {
 
     /// synthesize the project in ghdl and return the synthesized design
     pub fn ghdl_synthesize(&self, top_level: &str) -> Result<ghdl_sys::Design, String> {
-        self
-            .ghdl_lib
+        self.ghdl_lib
             .synth(&SynthOptions {
                 std: Self::to_ghdl_standard(self.standard).to_owned(),
                 workdir: Some(self.ghdl_temp_dir.path().to_owned()),
