@@ -750,15 +750,22 @@ fn resolve_library_name(name: &str, current: &str) -> String {
 mod tests {
     use super::*;
     use vhdl_lang::{NullDiagnostics, Source, VHDLParser, VHDLStandard};
+    use std::path::PathBuf;
 
-    fn parse(vhdl: &str) -> DesignFile {
+    fn test_dir() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("example")
+            .join("types_test")
+    }
+
+    fn parse(vhdl_file_name: &str) -> DesignFile {
         let parser = VHDLParser::new(VHDLStandard::VHDL2008);
-        let source = Source::inline(Path::new("inline_test.vhd"), vhdl);
+        let source = Source::from_latin1_file(&test_dir().join(vhdl_file_name)).expect("error parsing file {vhdl_file_name}");
         parser.parse_design_source(&source, &mut NullDiagnostics)
     }
 
-    fn build(vhdl: &str, library: &str) -> TypeResolver {
-        let design_file = parse(vhdl);
+    fn build(vhdl_file_name: &str, library: &str) -> TypeResolver {
+        let design_file = parse(vhdl_file_name);
         let mut resolver = TypeResolver::new();
         resolver.add_design_file(library, Path::new("inline_test.vhd"), &design_file);
         resolver.finalize();
@@ -780,21 +787,7 @@ mod tests {
     #[test]
     fn test_predefined_types() {
         let resolver = build(
-            "
-library ieee;
-use ieee.std_logic_1164.all;
-use ieee.numeric_std.all;
-
-entity top is
-    port (
-        bit_in    : in std_logic;
-        vector_in : in std_logic_vector(7 downto 0);
-        count     : in integer range 0 to 15;
-        num       : in unsigned(15 downto 0);
-        flag      : in boolean
-    );
-end entity top;
-",
+            "test_predefined_types.vhd",
             "work",
         );
         let types = resolver.resolve_unit("work", DesignUnitKind::Entity, "top");
@@ -809,39 +802,12 @@ end entity top;
     #[test]
     fn test_entity_local_types() {
         let resolver = build(
-            "
-entity top is
-    port (
-        state : out t_state;
-        rec   : out t_rec;
-        arr   : out t_arr
-    );
-
-    type t_state is (idle, running, done, 'x');
-    type t_rec is record
-        a : std_logic;
-        b : t_state;
-    end record;
-    type t_arr is array (0 to 7) of t_rec;
-end entity top;
-",
+            "test_entity_local_types.vhd",
             "work",
         );
         let types = resolver.resolve_unit("work", DesignUnitKind::Entity, "top");
         assert_eq!(
             types[0],
-            ResolvedType::Enum {
-                name: "t_state".to_string(),
-                elements: vec![
-                    "idle".to_string(),
-                    "running".to_string(),
-                    "done".to_string(),
-                    "'x'".to_string()
-                ]
-            }
-        );
-        assert_eq!(
-            types[1],
             ResolvedType::Record {
                 name: "t_rec".to_string(),
                 fields: vec![
@@ -856,37 +822,27 @@ end entity top;
                 ]
             }
         );
-        assert_eq!(types[2], array_of(types[1].clone()));
+        assert_eq!(types[1], array_of(types[1].clone()));
+        assert_eq!(
+            types[2],
+            ResolvedType::Enum {
+                name: "t_state".to_string(),
+                elements: vec![
+                    "idle".to_string(),
+                    "running".to_string(),
+                    "done".to_string(),
+                    "'x'".to_string()
+                ]
+            }
+        );
+
+
     }
 
     #[test]
     fn test_package_types_and_use_clauses() {
         let resolver = build(
-            "
-package pkg_a is
-    type t_state is (s0, s1, s2);
-end package pkg_a;
-
-use work.pkg_a.all;
-
-package pkg_b is
-    type t_rec is record
-        state : t_state;
-        data  : std_logic_vector(7 downto 0);
-    end record;
-    subtype t_sub is t_rec;
-end package pkg_b;
-
-use work.pkg_b.all;
-
-entity top is
-    port (
-        x : out t_sub;
-        y : out pkg_b.t_rec;
-        z : out work.pkg_a.t_state
-    );
-end entity top;
-",
+            "test_package_types_and_use_clauses.vhd",
             "work",
         );
         let types = resolver.resolve_unit("work", DesignUnitKind::Entity, "top");
@@ -923,25 +879,7 @@ end entity top;
     #[test]
     fn test_architecture_signals() {
         let resolver = build(
-            "
-entity top is
-    port (p : out t_shared);
-
-    type t_shared is array (0 to 1) of std_logic;
-end entity top;
-
-architecture rtl of top is
-
-    type t_local is record
-        f : t_shared;
-    end record;
-
-    signal s1 : t_local;
-    signal s2 : t_shared;
-
-begin
-end architecture rtl;
-",
+            "test_architecture_signals.vhd",
             "work",
         );
         let types = resolver.resolve_unit("work", DesignUnitKind::Architecture, "rtl");
@@ -967,24 +905,14 @@ end architecture rtl;
             "l1",
             Path::new("pkg.vhd"),
             &parse(
-                "
-package p1 is
-    type t_color is (red, green, blue);
-end package p1;
-",
+                "test_cross_library_selected_name_l1.vhd",
             ),
         );
         resolver.add_design_file(
             "l2",
             Path::new("top.vhd"),
             &parse(
-                "
-library l1;
-
-entity top is
-    port ( c : out l1.p1.t_color );
-end entity top;
-",
+                "test_cross_library_selected_name_l2.vhd",
             ),
         );
         resolver.finalize();
@@ -1001,23 +929,7 @@ end entity top;
     #[test]
     fn test_context_declaration() {
         let resolver = build(
-            "
-context ctx is
-    use work.pkg_a.all;
-end context ctx;
-
-use context work.ctx;
-
-package pkg_a is
-    type t_state is (a, b);
-end package pkg_a;
-
-use work.pkg_a.all;
-
-entity top is
-    port ( x : out t_state );
-end entity top;
-",
+            "test_context_declaration.vhd",
             "work",
         );
         let types = resolver.resolve_unit("work", DesignUnitKind::Entity, "top");
@@ -1033,24 +945,7 @@ end entity top;
     #[test]
     fn test_unknown_and_cycles() {
         let resolver = build(
-            "
-package p is
-    type t_a is access t_b;
-    type t_b is access t_a;
-    type t_rec is record
-        f : t_missing;
-    end record;
-end package p;
-
-use work.p.all;
-
-entity top is
-    port (
-        x : out t_a;
-        y : out t_rec
-    );
-end entity top;
-",
+            "test_unknown_and_cycles.vhd",
             "work",
         );
         let types = resolver.resolve_unit("work", DesignUnitKind::Entity, "top");
@@ -1079,16 +974,7 @@ end entity top;
     #[test]
     fn test_display() {
         let resolver = build(
-            "
-entity top is
-    port (
-        a : out std_logic_vector(3 downto 0);
-        b : out t_state
-    );
-
-    type t_state is (low, high);
-end entity top;
-",
+            "test_display.vhd",
             "work",
         );
         let types = resolver.resolve_unit("work", DesignUnitKind::Entity, "top");
