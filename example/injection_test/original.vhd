@@ -20,6 +20,10 @@ architecture rtl of original is
 begin
 
     i_component_0 : entity work.my_component
+        generic map (
+            const_a => 1,
+            const_b => 2
+        )
         port map(
             clk => clk,
             reset => reset,

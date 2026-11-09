@@ -25,13 +25,20 @@ architecture rtl of original is
     signal extra_signal : std_logic_vector(31 downto 0);
 -- ZProber]]
 begin
+-- ZProber[[ DO NOT EDIT THE LINES BELOW
+    extra_signal <= data_internal;
+-- ZProber]]
 
     i_component_0 : entity work.my_component
+        generic map (
+            const_a => 3,
+            const_b => 4
+        )
         port map(
             clk => clk,
             reset => reset,
             data_in => data_in,
-            data_out => data_internal
+            data_out => extra_signal
         );
 
     i_component_1 : entity work.my_other_component

@@ -1,19 +1,26 @@
 //! Injection of code blocks into VHDL source files
 //!
-//! Zprober can inject blocks of code at three kinds of positions of a VHDL
-//! file, all with a single [`inject`] call:
+//! Zprober can inject blocks of code at several kinds of positions of a
+//! VHDL file, all with a single [`inject`] call:
 //!
 //! - at the end of the ports list of the entity declaration
 //! - at the end of the declarative region of the architecture(s), just
 //!   before the `begin` keyword
+//! - at the beginning of the statements region of the architecture(s),
+//!   just after the `begin` keyword
 //! - at the end of the port map of one or several (named) instantiations
 //!
-//! Every injected block is wrapped in the `-- ZProber[[` / `-- ZProber]]`
-//! marker comments. When injecting into a file that already contains such
-//! blocks, the existing blocks are replaced by the new content (an existing
-//! block whose zone is not part of the new injection is simply removed).
-//! Marker lines may carry arbitrary trailing content, e.g.
-//! `-- ZProber[[ some note`, and are matched case-insensitively.
+//! Additionally, the association lists of the generic and/or port maps of
+//! one or several (named) instantiations can be replaced wholesale,
+//! without the marker comments (see [`MapReplacement`]).
+//!
+//! Every injected block is wrapped in the `-- ZProber[[ DO NOT EDIT THE
+//! LINES BELOW` / `-- ZProber]]` marker comments. When injecting into a
+//! file that already contains such blocks, the existing blocks are
+//! replaced by the new content (an existing block whose zone is not part
+//! of the new injection is simply removed). Marker lines may carry
+//! arbitrary trailing content, e.g. `-- ZProber[[ some note`, and are
+//! matched case-insensitively.
 //!
 //! [`remove_injections`] strips every injected block (markers included)
 //! from a source text, restoring the original code. It works on the plain
@@ -23,17 +30,50 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use vhdl_lang::ast::{
-    AnyDesignUnit, AnyPrimaryUnit, AnySecondaryUnit, ConcurrentStatement, EntityDeclaration,
-    InterfaceDeclaration, LabeledConcurrentStatement, ModeIndication,
+    AnyDesignUnit, AnyPrimaryUnit, AnySecondaryUnit, AssociationElement, ConcurrentStatement,
+    EntityDeclaration, InterfaceDeclaration, LabeledConcurrentStatement, ModeIndication,
 };
 use vhdl_lang::{NullDiagnostics, Position, Source, Token, TokenAccess, VHDLParser, VHDLStandard};
 
 /// Comment introducing an injected code block
 pub const START_MARKER: &str = "-- ZProber[[";
+
+/// Trailing content of the start marker line
 pub const WARNING_IN_MARKER: &str = "DO NOT EDIT THE LINES BELOW";
 
 /// Comment terminating an injected code block
 pub const END_MARKER: &str = "-- ZProber]]";
+
+/// A map replacement requested for an instantiation (no markers involved):
+/// either or both association lists are replaced wholesale, keeping the
+/// surrounding syntax (the `generic map (` / `port map (` / `)` lines)
+/// untouched
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MapReplacement {
+    /// Replacement for the association list of the generic map
+    pub generic_map: Option<String>,
+    /// Replacement for the association list of the port map
+    pub port_map: Option<String>,
+}
+
+impl MapReplacement {
+    /// Whether no map replacement is requested at all
+    pub fn is_empty(&self) -> bool {
+        self.generic_map.is_none() && self.port_map.is_none()
+    }
+
+    /// Replace the association list of the generic map
+    pub fn with_generic_map(mut self, code: impl Into<String>) -> Self {
+        self.generic_map = Some(code.into());
+        self
+    }
+
+    /// Replace the association list of the port map
+    pub fn with_port_map(mut self, code: impl Into<String>) -> Self {
+        self.port_map = Some(code.into());
+        self
+    }
+}
 
 /// The code blocks to inject into a VHDL source, per injection zone
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -44,10 +84,17 @@ pub struct InjectionPoints {
     /// Code appended at the end of the declarative region of every
     /// architecture of the file, just before `begin`
     pub architecture_declarations: Option<String>,
+    /// Code appended at the beginning of the statements region of every
+    /// architecture of the file, just after `begin`
+    pub architecture_statements: Option<String>,
     /// Code appended at the end of the port map of the named
     /// instantiations, keyed by instantiation label (matched
     /// case-insensitively, as VHDL labels are)
     pub instantiation_ports: BTreeMap<String, String>,
+    /// Map replacements requested for the named instantiations, keyed by
+    /// instantiation label (matched case-insensitively, as VHDL labels
+    /// are)
+    pub instantiation_map_replacements: BTreeMap<String, MapReplacement>,
 }
 
 impl InjectionPoints {
@@ -55,7 +102,9 @@ impl InjectionPoints {
     pub fn is_empty(&self) -> bool {
         self.entity_ports.is_none()
             && self.architecture_declarations.is_none()
+            && self.architecture_statements.is_none()
             && self.instantiation_ports.is_empty()
+            && self.instantiation_map_replacements.is_empty()
     }
 
     /// Request an injection at the end of the entity ports list
@@ -70,6 +119,12 @@ impl InjectionPoints {
         self
     }
 
+    /// Request an injection at the beginning of the architecture statements
+    pub fn with_architecture_statements(mut self, code: impl Into<String>) -> Self {
+        self.architecture_statements = Some(code.into());
+        self
+    }
+
     /// Request an injection at the end of the port map of an instantiation,
     /// identified by its label
     pub fn with_instantiation_ports(
@@ -78,6 +133,18 @@ impl InjectionPoints {
         code: impl Into<String>,
     ) -> Self {
         self.instantiation_ports.insert(label.into(), code.into());
+        self
+    }
+
+    /// Request a wholesale replacement of the generic and/or port maps of
+    /// an instantiation, identified by its label
+    pub fn with_instantiation_map_replacement(
+        mut self,
+        label: impl Into<String>,
+        replacement: MapReplacement,
+    ) -> Self {
+        self.instantiation_map_replacements
+            .insert(label.into(), replacement);
         self
     }
 }
@@ -103,9 +170,9 @@ pub fn inject(source: &str, points: &InjectionPoints) -> Result<String, String> 
     let mut diagnostics = NullDiagnostics;
     let design_file = parser.parse_design_source(&parsed_source, &mut diagnostics);
 
-    let mut insertions: Vec<Insertion> = Vec::new();
-    let mut entity_injected = false;
-    let mut architecture_injected = false;
+    let mut edits: Vec<Edit> = Vec::new();
+    let mut entity_handled = false;
+    let mut architecture_handled = false;
     let mut labels_found: BTreeSet<String> = BTreeSet::new();
 
     for (tokens, unit) in &design_file.design_units {
@@ -113,22 +180,26 @@ pub fn inject(source: &str, points: &InjectionPoints) -> Result<String, String> 
             AnyDesignUnit::Primary(AnyPrimaryUnit::Entity(entity)) => {
                 if let Some(code) = &points.entity_ports {
                     let end = entity_port_list_end(entity, tokens)?;
-                    insertions.push(Insertion::after_token(&clean, end, code)?);
-                    entity_injected = true;
+                    edits.push(Edit::after_token(&clean, end, code)?);
+                    entity_handled = true;
                 }
             }
             AnyDesignUnit::Secondary(AnySecondaryUnit::Architecture(architecture)) => {
+                let begin_line = tokens.get_pos(architecture.begin_token).range.start.line;
                 if let Some(code) = &points.architecture_declarations {
-                    let begin_line = tokens.get_pos(architecture.begin_token).range.start.line;
-                    insertions.push(Insertion::at_line_start(&clean, begin_line, code)?);
-                    architecture_injected = true;
+                    edits.push(Edit::at_line_start(&clean, begin_line, code)?);
+                    architecture_handled = true;
+                }
+                if let Some(code) = &points.architecture_statements {
+                    edits.push(Edit::after_line(&clean, begin_line, code)?);
+                    architecture_handled = true;
                 }
                 walk_statements(
                     &clean,
                     tokens,
                     &architecture.statements,
                     points,
-                    &mut insertions,
+                    &mut edits,
                     &mut labels_found,
                 )?;
             }
@@ -136,10 +207,12 @@ pub fn inject(source: &str, points: &InjectionPoints) -> Result<String, String> 
         }
     }
 
-    if points.entity_ports.is_some() && !entity_injected {
+    if points.entity_ports.is_some() && !entity_handled {
         return Err("no entity declaration found in the file".to_string());
     }
-    if points.architecture_declarations.is_some() && !architecture_injected {
+    if (points.architecture_declarations.is_some() || points.architecture_statements.is_some())
+        && !architecture_handled
+    {
         return Err("no architecture declaration found in the file".to_string());
     }
     for label in points.instantiation_ports.keys() {
@@ -150,15 +223,23 @@ pub fn inject(source: &str, points: &InjectionPoints) -> Result<String, String> 
             return Err(format!("instantiation '{}' not found in the file", label));
         }
     }
+    for label in points.instantiation_map_replacements.keys() {
+        if !labels_found
+            .iter()
+            .any(|found| found.eq_ignore_ascii_case(label))
+        {
+            return Err(format!("instantiation '{}' not found in the file", label));
+        }
+    }
 
-    apply_insertions(clean, insertions)
+    apply_edits(clean, edits)
 }
 
 /// Remove every injected code block (markers included) from a VHDL source
 /// text.
 ///
 /// This works on the plain text and does not parse the VHDL: a block is
-/// the sequence of lines starting at a line prefixed with `-- Zprober[[`
+/// the sequence of lines starting at a line prefixed with `-- ZProber[[`
 /// and ending at the next line prefixed with `-- ZProber]]` (both matched
 /// case-insensitively, ignoring leading whitespace and tolerating any
 /// trailing content on the marker lines).
@@ -190,11 +271,7 @@ pub fn remove_injections(source: &str) -> Result<String, String> {
 
     // Rebuild the text, preserving the line ending style and the presence
     // of a trailing newline
-    let newline = if source.contains("\r\n") {
-        "\r\n"
-    } else {
-        "\n"
-    };
+    let newline = if source.contains("\r\n") { "\r\n" } else { "\n" };
     let mut result = kept.join(newline);
     if source.ends_with('\n') {
         result.push_str(newline);
@@ -212,31 +289,29 @@ pub fn remove_injections(source: &str) -> Result<String, String> {
 fn block_text(code: &str, trailing_newline: bool) -> String {
     let code = code.trim_matches(|c: char| c == '\n' || c == '\r');
     if trailing_newline {
-        format!(
-            "{} {}\n{}\n{}\n",
-            START_MARKER, WARNING_IN_MARKER, code, END_MARKER
-        )
+        format!("{} {}\n{}\n{}\n", START_MARKER, WARNING_IN_MARKER, code, END_MARKER)
     } else {
-        format!(
-            "{} {}\n{}\n{}",
-            START_MARKER, WARNING_IN_MARKER, code, END_MARKER
-        )
+        format!("{} {}\n{}\n{}", START_MARKER, WARNING_IN_MARKER, code, END_MARKER)
     }
 }
 
-/// A pending insertion of an injected block into the source text
-struct Insertion {
-    /// Byte offset in the (block-stripped) source
-    offset: usize,
-    /// The text to insert at that offset
+/// A pending edit of the (block-stripped) source text: an insertion when
+/// `start == end`, or a replacement of the range `start..end` otherwise
+/// (used for the marker-free map replacements)
+struct Edit {
+    /// Byte offset in the (block-stripped) source where the edit starts
+    start: usize,
+    /// Byte offset where the edit ends (equal to `start` for an insertion)
+    end: usize,
+    /// The text to write at that offset
     text: String,
 }
 
-impl Insertion {
+impl Edit {
     /// Insertion just after the token ending at `position`: the block is
     /// written on the following lines, the rest of the current line (e.g.
     /// the closing `);`) is preserved
-    fn after_token(source: &str, position: Position, code: &str) -> Result<Insertion, String> {
+    fn after_token(source: &str, position: Position, code: &str) -> Result<Edit, String> {
         let offset = position_to_offset(source, position).ok_or_else(|| {
             format!(
                 "position {}:{} is outside of the source",
@@ -244,20 +319,63 @@ impl Insertion {
                 position.character
             )
         })?;
-        Ok(Insertion {
-            offset,
+        Ok(Edit {
+            start: offset,
+            end: offset,
             text: format!("\n{}", block_text(code, false)),
         })
     }
 
     /// Insertion at the very beginning of `line`: the block is written on
     /// the preceding lines
-    fn at_line_start(source: &str, line: u32, code: &str) -> Result<Insertion, String> {
+    fn at_line_start(source: &str, line: u32, code: &str) -> Result<Edit, String> {
         let offset = position_to_offset(source, Position::new(line, 0))
             .ok_or_else(|| format!("line {} is outside of the source", line + 1))?;
-        Ok(Insertion {
-            offset,
+        Ok(Edit {
+            start: offset,
+            end: offset,
             text: block_text(code, true),
+        })
+    }
+
+    /// Insertion at the very beginning of the line following `line`: the
+    /// block is written on the lines separating the current line and the
+    /// following one
+    fn after_line(source: &str, line: u32, code: &str) -> Result<Edit, String> {
+        let offset = position_to_offset(source, Position::new(line + 1, 0))
+            .ok_or_else(|| format!("line {} is outside of the source", line + 2))?;
+        Ok(Edit {
+            start: offset,
+            end: offset,
+            text: block_text(code, true),
+        })
+    }
+
+    /// Replacement of the range between two positions (no markers)
+    fn replace_range(
+        source: &str,
+        start: Position,
+        end: Position,
+        code: &str,
+    ) -> Result<Edit, String> {
+        let start_offset = position_to_offset(source, start).ok_or_else(|| {
+            format!(
+                "position {}:{} is outside of the source",
+                start.line + 1,
+                start.character
+            )
+        })?;
+        let end_offset = position_to_offset(source, end).ok_or_else(|| {
+            format!(
+                "position {}:{} is outside of the source",
+                end.line + 1,
+                end.character
+            )
+        })?;
+        Ok(Edit {
+            start: start_offset,
+            end: end_offset,
+            text: code.to_string(),
         })
     }
 }
@@ -327,7 +445,8 @@ fn entity_port_list_end(entity: &EntityDeclaration, tokens: &[Token]) -> Result<
 }
 
 /// Recursively walk concurrent statements, recording a port map injection
-/// for every instantiation whose label is listed in `points`.
+/// and/or map replacement for every instantiation whose label is listed in
+/// `points`.
 ///
 /// `labels_found` collects the (lowercased) labels that were matched, so
 /// the caller can detect requested labels that are missing from the file.
@@ -336,44 +455,85 @@ fn walk_statements(
     tokens: &[Token],
     statements: &[LabeledConcurrentStatement],
     points: &InjectionPoints,
-    insertions: &mut Vec<Insertion>,
+    edits: &mut Vec<Edit>,
     labels_found: &mut BTreeSet<String>,
 ) -> Result<(), String> {
     for statement in statements {
         if let Some(ident) = &statement.label.tree {
             let label = ident.item.name_utf8();
-            if let Some((_, code)) = points
+            let is_port_requested = points
                 .instantiation_ports
-                .iter()
-                .find(|(name, _)| name.eq_ignore_ascii_case(&label))
-            {
+                .keys()
+                .any(|name| name.eq_ignore_ascii_case(&label));
+            let is_map_requested = points
+                .instantiation_map_replacements
+                .keys()
+                .any(|name| name.eq_ignore_ascii_case(&label));
+            if is_port_requested || is_map_requested {
                 let ConcurrentStatement::Instance(inst) = &statement.statement.item else {
                     return Err(format!(
                         "'{}' does not label a component instantiation",
                         label
                     ));
                 };
-                let Some(port_map) = &inst.port_map else {
-                    return Err(format!("instantiation '{}' has no port map", label));
-                };
-                let Some(last) = port_map.list.items.last() else {
-                    return Err(format!("port map of instantiation '{}' is empty", label));
-                };
-                let position = tokens.get_pos(last.actual.span.end_token).range.end;
-                insertions.push(Insertion::after_token(source, position, code)?);
+                if is_port_requested {
+                    let code = points
+                        .instantiation_ports
+                        .iter()
+                        .find(|(name, _)| name.eq_ignore_ascii_case(&label))
+                        .map(|(_, code)| code)
+                        .unwrap();
+                    let Some(port_map) = &inst.port_map else {
+                        return Err(format!("instantiation '{}' has no port map", label));
+                    };
+                    let Some(last) = port_map.list.items.last() else {
+                        return Err(format!(
+                            "port map of instantiation '{}' is empty",
+                            label
+                        ));
+                    };
+                    let position = tokens.get_pos(last.actual.span.end_token).range.end;
+                    edits.push(Edit::after_token(source, position, code)?);
+                }
+                if is_map_requested {
+                    let replacement = points
+                        .instantiation_map_replacements
+                        .iter()
+                        .find(|(name, _)| name.eq_ignore_ascii_case(&label))
+                        .map(|(_, replacement)| replacement)
+                        .unwrap();
+                    if let Some(code) = &replacement.generic_map {
+                        let Some(map) = &inst.generic_map else {
+                            return Err(format!(
+                                "instantiation '{}' has no generic map",
+                                label
+                            ));
+                        };
+                        edits.push(Edit::replace_range(
+                            source,
+                            map_list_start(&map.list, tokens)?,
+                            map_list_end(&map.list, tokens)?,
+                            code,
+                        )?);
+                    }
+                    if let Some(code) = &replacement.port_map {
+                        let Some(map) = &inst.port_map else {
+                            return Err(format!("instantiation '{}' has no port map", label));
+                        };
+                        edits.push(Edit::replace_range(
+                            source,
+                            map_list_start(&map.list, tokens)?,
+                            map_list_end(&map.list, tokens)?,
+                            code,
+                        )?);
+                    }
+                }
                 labels_found.insert(label.to_lowercase());
             }
         }
         match &statement.statement.item {
             ConcurrentStatement::Block(block) => {
-                walk_statements(
-                    source,
-                    tokens,
-                    &block.statements,
-                    points,
-                    insertions,
-                    labels_found,
-                )?;
+                walk_statements(source, tokens, &block.statements, points, edits, labels_found)?;
             }
             ConcurrentStatement::ForGenerate(gen_stmt) => {
                 walk_statements(
@@ -381,7 +541,7 @@ fn walk_statements(
                     tokens,
                     &gen_stmt.body.statements,
                     points,
-                    insertions,
+                    edits,
                     labels_found,
                 )?;
             }
@@ -392,7 +552,7 @@ fn walk_statements(
                         tokens,
                         &conditional.item.statements,
                         points,
-                        insertions,
+                        edits,
                         labels_found,
                     )?;
                 }
@@ -402,7 +562,7 @@ fn walk_statements(
                         tokens,
                         &else_body.statements,
                         points,
-                        insertions,
+                        edits,
                         labels_found,
                     )?;
                 }
@@ -414,7 +574,7 @@ fn walk_statements(
                         tokens,
                         &alternative.item.statements,
                         points,
-                        insertions,
+                        edits,
                         labels_found,
                     )?;
                 }
@@ -425,22 +585,48 @@ fn walk_statements(
     Ok(())
 }
 
-/// Apply the pending insertions to the source text
-fn apply_insertions(mut source: String, mut insertions: Vec<Insertion>) -> Result<String, String> {
-    // Insert from the end of the file backwards, so that the offsets of
-    // the pending insertions remain valid
-    insertions.sort_by_key(|insertion| std::cmp::Reverse(insertion.offset));
-    if let Some(duplicate) = insertions
-        .windows(2)
-        .find(|pair| pair[0].offset == pair[1].offset)
-    {
+/// Position of the start of the first association element of a map list
+fn map_list_start(
+    list: &vhdl_lang::ast::SeparatedList<AssociationElement>,
+    tokens: &[Token],
+) -> Result<Position, String> {
+    let Some(first) = list.items.first() else {
+        return Err("the map list is empty".to_string());
+    };
+    let start = if let Some(formal) = &first.formal {
+        formal.span.start_token
+    } else {
+        first.actual.span.start_token
+    };
+    Ok(tokens.get_pos(start).range.start)
+}
+
+/// Position of the end of the last association element of a map list
+fn map_list_end(
+    list: &vhdl_lang::ast::SeparatedList<AssociationElement>,
+    tokens: &[Token],
+) -> Result<Position, String> {
+    let Some(last) = list.items.last() else {
+        return Err("the map list is empty".to_string());
+    };
+    Ok(tokens.get_pos(last.actual.span.end_token).range.end)
+}
+
+/// Apply the pending edits to the source text
+fn apply_edits(mut source: String, mut edits: Vec<Edit>) -> Result<String, String> {
+    // Apply from the end of the file backwards, so that the offsets of
+    // the pending edits remain valid
+    edits.sort_by_key(|edit| std::cmp::Reverse(edit.start));
+    if let Some(duplicate) = edits.windows(2).find(|pair| {
+        pair[1].start == pair[0].start || pair[1].end > pair[0].start
+    }) {
         return Err(format!(
-            "two injections at the same position (offset {})",
-            duplicate[0].offset
+            "two edits overlapping at offset {}",
+            duplicate[0].start
         ));
     }
-    for insertion in insertions {
-        source.insert_str(insertion.offset, &insertion.text);
+    for edit in edits {
+        source.replace_range(edit.start..edit.end, &edit.text);
     }
     Ok(source)
 }
@@ -461,7 +647,7 @@ mod tests {
             .unwrap_or_else(|e| panic!("failed to read {}: {}", file, e))
     }
 
-    /// Inject the three zones into original.vhd
+    /// instructions_1.md: inject the three zones into original.vhd
     #[test]
     fn test_inject_original() {
         let source = read("original.vhd");
@@ -469,6 +655,15 @@ mod tests {
             .with_entity_ports(";\n    debug : out std_logic_vector(7 downto 0)")
             .with_architecture_declarations(
                 "    signal extra_signal : std_logic_vector(31 downto 0);",
+            )
+            .with_architecture_statements("    extra_signal <= data_internal;")
+            .with_instantiation_map_replacement(
+                "i_component_0",
+                MapReplacement::default()
+                    .with_generic_map("const_a => 3,\n            const_b => 4")
+                    .with_port_map(
+                        "clk => clk,\n            reset => reset,\n            data_in => data_in,\n            data_out => extra_signal",
+                    ),
             )
             .with_instantiation_ports("i_component_1", ",\n    debug => debug");
         let result = inject(&source, &points).unwrap();
@@ -508,6 +703,15 @@ mod tests {
             .with_architecture_declarations(
                 "    signal extra_signal : std_logic_vector(31 downto 0);",
             )
+            .with_architecture_statements("    extra_signal <= data_internal;")
+            .with_instantiation_map_replacement(
+                "I_Component_0",
+                MapReplacement::default()
+                    .with_generic_map("const_a => 3,\n            const_b => 4")
+                    .with_port_map(
+                        "clk => clk,\n            reset => reset,\n            data_in => data_in,\n            data_out => extra_signal",
+                    ),
+            )
             .with_instantiation_ports("I_Component_1", ",\n    debug => debug");
         let result = inject(&source, &points).unwrap();
         assert_eq!(result, read("modified_1_out.vhd"));
@@ -522,6 +726,15 @@ mod tests {
             .with_architecture_declarations(
                 "    signal extra_signal : std_logic_vector(31 downto 0);",
             )
+            .with_architecture_statements("    extra_signal <= data_internal;")
+            .with_instantiation_map_replacement(
+                "i_component_0",
+                MapReplacement::default()
+                    .with_generic_map("const_a => 3,\n            const_b => 4")
+                    .with_port_map(
+                        "clk => clk,\n            reset => reset,\n            data_in => data_in,\n            data_out => extra_signal",
+                    ),
+            )
             .with_instantiation_ports("i_component_1", ",\n    debug => debug");
         let once = inject(&source, &points).unwrap();
         let twice = inject(&once, &points).unwrap();
@@ -532,6 +745,17 @@ mod tests {
     fn test_unknown_instantiation_is_rejected() {
         let source = read("original.vhd");
         let points = InjectionPoints::default().with_instantiation_ports("no_such_label", ",");
+        assert!(inject(&source, &points).is_err());
+    }
+
+    #[test]
+    fn test_unknown_map_replacement_is_rejected() {
+        let source = read("original.vhd");
+        let points = InjectionPoints::default()
+            .with_instantiation_map_replacement(
+                "no_such_label",
+                MapReplacement::default().with_port_map(","),
+            );
         assert!(inject(&source, &points).is_err());
     }
 
