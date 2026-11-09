@@ -3,7 +3,9 @@
 //! The [vhdl_lang] crate provides parsing and analysis of individual files,
 //! but it does not build an instantiation tree. This module walks the AST of
 //! every design unit in a project, records which entity instantiates which,
-//! and identifies the top-level entities.
+//! and identifies the top-level entities. It also records the ports of every
+//! entity and the signals of every architecture, whose types are fully
+//! resolved by the [types] module.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -16,6 +18,7 @@ use vhdl_lang::ast::{
 use vhdl_lang::{NullDiagnostics, VHDLParser};
 
 use crate::vhdl::project::Project;
+use crate::vhdl::types::{ResolvedType, TypeResolver};
 
 /// A library-qualified name of a design unit, e.g. `lib.my_module`
 ///
@@ -93,6 +96,9 @@ pub struct Signal {
     pub signal_type: String,
     /// the signal size in bits
     pub size: u32,
+    /// the fully resolved type ([`ResolvedType::Unknown`] if it could not
+    /// be resolved)
+    pub resolved_type: ResolvedType,
 }
 
 #[derive(Debug, strum::Display, Clone, PartialEq, Eq)]
@@ -172,6 +178,7 @@ impl Hierarchy {
         let parser = VHDLParser::new(project.standard());
         let mut units = Vec::new();
         let mut instantiations = Vec::new();
+        let mut resolver = TypeResolver::new();
 
         for library in project.libraries() {
             for file in &library.files {
@@ -186,11 +193,23 @@ impl Hierarchy {
                             &mut units,
                             &mut instantiations,
                         );
+                        resolver.add_design_file(&library.name, file, &design_file);
                     }
                     Err(e) => {
                         tracing::warn!("Failed to read '{}': {}", file.display(), e);
                     }
                 }
+            }
+        }
+
+        // Resolve the type of every port and signal (packages may be
+        // defined in any file, so this can only happen once all files are
+        // parsed).
+        resolver.finalize();
+        for unit in &mut units {
+            let resolved = resolver.resolve_unit(&unit.library, unit.kind, &unit.name);
+            for (signal, resolved_type) in unit.signals.iter_mut().zip(resolved) {
+                signal.resolved_type = resolved_type;
             }
         }
 
@@ -351,6 +370,11 @@ fn find_ports(port_clause: &Option<vhdl_lang::ast::InterfaceList>) -> Vec<Signal
                         signal_type: signal_type.clone(),
                         mode: mode.to_owned(),
                         size: 0,
+                        // filled in by `Hierarchy::build` after all files
+                        // were parsed
+                        resolved_type: ResolvedType::Unknown {
+                            raw: signal_type.clone(),
+                        },
                     });
                 }
             }
@@ -373,6 +397,11 @@ fn find_signals(
                     signal_type: signal_type.clone(),
                     mode: SignalMode::Signal,
                     size: 0,
+                    // filled in by `Hierarchy::build` after all files
+                    // were parsed
+                    resolved_type: ResolvedType::Unknown {
+                        raw: signal_type.clone(),
+                    },
                 });
             }
         }

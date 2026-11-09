@@ -260,6 +260,7 @@ fn cmd_select_instance(interp: &mut Interp, context_id: ContextID, argv: &[Value
                     mode: signal.mode.clone(),
                     signal_type: signal.signal_type.clone(),
                     size: new_size,
+                    resolved_type: signal.resolved_type.clone(),
                 }
             })
             // take away signals and ports with null width (possibly optimized away)
