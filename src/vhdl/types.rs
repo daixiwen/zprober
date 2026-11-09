@@ -457,7 +457,7 @@ impl TypeResolver {
         // Predefined types of std.standard / ieee packages (looked up last,
         // so user declarations take precedence).
         if parts.len() == 1 {
-            if is_predefined_scalar(&parts[0]) {
+            if is_predefined(&parts[0]) {
                 return ResolvedType::Standard { name: raw.clone() };
             }
             if let Some(element) = self.predefined_array_element(&parts[0], scope) {
@@ -605,32 +605,17 @@ impl TypeResolver {
     /// The element type of a predefined array type, if `name` is one.
     fn predefined_array_element(&self, name: &str, scope: &ScopeKey) -> Option<&'static str> {
         let element = match name {
-            "bit_vector" => "bit",
             "string" => "character",
-            "boolean_vector" => "boolean",
             "integer_vector" => "integer",
             "real_vector" => "real",
             "time_vector" => "time",
-            "std_logic_vector" => "std_logic",
-            "std_ulogic_vector" => "std_ulogic",
-            // numeric_std defines `unsigned`/`signed` as arrays of
-            // std_logic; numeric_bit as arrays of bit.
-            "unsigned" | "signed" => {
-                if self.uses_package(scope, "ieee", "numeric_bit")
-                    && !self.uses_package(scope, "ieee", "numeric_std")
-                {
-                    "bit"
-                } else {
-                    "std_logic"
-                }
-            }
             _ => return None,
         };
         Some(element)
     }
 }
 
-/// Predefined scalar types of `std.standard` and `ieee.std_logic_1164`.
+/// Predefined scalar and vector types of `std.standard` and `ieee.std_logic_1164`.
 ///
 /// Note: known IEEE names are resolved even if their package is not used;
 /// declaring a port of an unused type is a design error anyway.
@@ -649,9 +634,17 @@ const PREDEFINED_SCALARS: &[&str] = &[
     "universal_real",
     "std_logic",
     "std_ulogic",
+    "std_logic_vector",
+    "std_ulogic_vector",
+    "unsigned",
+    "signed",
+    "ufixed",
+    "sfixed",
+    "bit_vector",
+    "boolean_vector",
 ];
 
-fn is_predefined_scalar(name: &str) -> bool {
+fn is_predefined(name: &str) -> bool {
     PREDEFINED_SCALARS.contains(&name)
 }
 
@@ -790,9 +783,9 @@ mod tests {
         let resolver = build("test_predefined_types.vhd", "work");
         let types = resolver.resolve_unit("work", DesignUnitKind::Entity, "top");
         assert_eq!(types[0], std("std_logic"));
-        assert_eq!(types[1], array_of(std("std_logic")));
+        assert_eq!(types[1], std("std_logic_vector"));
         assert_eq!(types[2], std("integer"));
-        assert_eq!(types[3], array_of(std("std_logic")));
+        assert_eq!(types[3], std("unsigned"));
         assert_eq!(types[4], std("boolean"));
         assert_eq!(types.len(), 5);
     }
@@ -852,7 +845,7 @@ mod tests {
                 },
                 RecordField {
                     name: "data".to_string(),
-                    resolved_type: array_of(std("std_logic")),
+                    resolved_type: std("std_logic_vector"),
                 },
             ],
         };
@@ -956,7 +949,7 @@ mod tests {
     fn test_display() {
         let resolver = build("test_display.vhd", "work");
         let types = resolver.resolve_unit("work", DesignUnitKind::Entity, "top");
-        assert_eq!(types[0].to_string(), "array of std_logic");
+        assert_eq!(types[0].to_string(), "std_logic_vector");
         assert_eq!(types[1].to_string(), "t_state (low, high)");
     }
 }
