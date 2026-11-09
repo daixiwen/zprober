@@ -320,6 +320,30 @@ lib2.files = ['src/lib2/*.vhd', 'src/common/*.vhd']
         assert_eq!(config.libraries["lib2"].files.len(), 2);
     }
 
+    /// Loading a project initializes the GHDL library once per process, and
+    /// later projects (e.g. after closing and re-opening one) reuse it, even
+    /// when each session lives on a different thread (like cargo's test
+    /// workers do).
+    #[test]
+    fn test_session_churn_across_threads() {
+        let toml_file = example_dir().join("vhdl_ls.toml");
+        assert!(
+            toml_file.exists(),
+            "Test requires the example project at {}",
+            toml_file.display()
+        );
+        for _ in 0..8 {
+            let toml_file = toml_file.clone();
+            std::thread::spawn(move || {
+                let project = Project::from_vhdl_ls_toml(&toml_file).unwrap();
+                assert_eq!(project.standard(), VHDLStandard::VHDL2008);
+                drop(project);
+            })
+            .join()
+            .unwrap();
+        }
+    }
+
     #[test]
     fn test_invalid_standard_rejected() {
         let config = TomlConfig::from_str("standard = \"bad\"").unwrap();

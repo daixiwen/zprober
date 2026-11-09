@@ -9,10 +9,12 @@
 //!
 //! GHDL keeps all its state in process-global variables, and some
 //! initializations cannot run twice, so the API is tied to a [`Ghdl`] session
-//! object enforcing the correct order:
+//! object enforcing the correct order.  The one-time library initializations
+//! are guarded internally: creating a new session (e.g. after a project was
+//! closed) is safe and does not re-initialize the library.
 //!
-//! 1. [`Ghdl::init`] - library initialization (must be called first, exactly
-//!    once per process).
+//! 1. [`Ghdl::init`] - returns a session; the underlying library
+//!    initialization runs exactly once per process.
 //! 2. [`Ghdl::import`] - import (analyze) VHDL files into one or several
 //!    libraries, like `ghdl -i`. Libraries are saved in the work directory
 //!    (`<lib>-obj<std>.cf` files), and stay in memory.
@@ -29,12 +31,18 @@
 //! `entity_Barchitecture[_Llibrary][_generic values...][_sha1]`; see
 //! [`Module::parse_name`].
 //!
-//! All functions must be called from the same thread (GHDL is not
-//! thread-safe); `Ghdl` is `!Send`/`!Sync` to enforce this.
+//! GHDL is not thread-safe, so all interactions with the library are
+//! serialized through an internal mutex: concurrent sessions (e.g. tests
+//! running in parallel) take turns instead of corrupting the global state.
+//! A single session must still not be driven from several threads at the
+//! same time (its state machine is not synchronized), and the netlist
+//! obtained from [`Ghdl::synth`] must be dropped before another session
+//! synthesizes, as it points into the GHDL global netlist memory.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::ffi::{c_char, CStr, CString};
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 // ---------------------------------------------------------------------------
 // Raw FFI
@@ -242,6 +250,35 @@ fn sname_to_string(n: ffi::Sname) -> String {
 // Session
 // ---------------------------------------------------------------------------
 
+/// Guards the one-time initialization of the GHDL library (`libghdl_init`,
+/// the analysis hooks, the exec prefix and the synth setup).
+///
+/// GHDL keeps all its state in process-global variables and this sequence
+/// must only run once per process, no matter how many [`Ghdl`] sessions are
+/// created (e.g. when projects are closed and re-opened).  Later sessions
+/// simply reuse the initialized library.
+static LIBRARY_INIT: OnceLock<()> = OnceLock::new();
+
+/// Guards the loading of the VHDL standard libraries (`std`, `ieee`, ...),
+/// which like the library initialization must happen only once per process.
+/// The stored value is the status returned by the GHDL call (0 on success).
+static STANDARD_LIBRARIES_INIT: OnceLock<i32> = OnceLock::new();
+
+/// Serializes every interaction with the GHDL library.
+///
+/// GHDL is not thread-safe: concurrent FFI calls from separate sessions
+/// (e.g. tests running in parallel) would corrupt its global state, so the
+/// public session methods hold this lock for the duration of their FFI
+/// work.
+static GHDL_LOCK: Mutex<()> = Mutex::new(());
+
+fn ghdl_lock() -> MutexGuard<'static, ()> {
+    //  Poisoning is irrelevant here: once a GHDL call misbehaves the
+    //  library state is unusable anyway, and panics must not prevent the
+    //  remaining sessions from taking their turn.
+    GHDL_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum State {
     /// Library initialized, no VHDL loaded yet.
@@ -252,17 +289,36 @@ enum State {
     SynthReady,
 }
 
-/// A GHDL session. Only one session can exist per process, and all its
-/// methods must be called from the thread that created it.
+/// Options set by [`Ghdl::import`] that [`Ghdl::compile`] needs again.
+///
+/// GHDL options are process-global and outlive a session: without
+/// re-applying them, a `compile()` running after another session changed
+/// `--workdir` would save its libraries into that session's work directory
+/// (which may already have been deleted when its project was closed).
+struct ImportContext {
+    std: String,
+    workdir: PathBuf,
+}
+
+/// A GHDL session.  Several sessions can exist per process (e.g. one per
+/// open project); they share the process-global GHDL library, and their FFI
+/// interactions are serialized by an internal lock.  The state machine of a
+/// given session must still only be driven from one thread at a time.
 pub struct Ghdl {
     state: Cell<State>,
+    import_ctx: RefCell<Option<ImportContext>>,
 }
 
 impl Ghdl {
-    /// Initialize the library. `prefix` must point to a tree containing the
-    /// compiled VHDL standard libraries (i.e. `<prefix>/lib/ghdl/std/...`).
-    /// The build script provides the submodule directory through the
-    /// `GHDL_SYS_PREFIX` environment variable, which is the default.
+    /// Initialize the library and return a new session. `prefix` must point
+    /// to a tree containing the compiled VHDL standard libraries (i.e.
+    /// `<prefix>/lib/ghdl/std/...`).  The build script provides the
+    /// submodule directory through the `GHDL_SYS_PREFIX` environment
+    /// variable, which is the default.
+    ///
+    /// The library initialization itself runs only once per process;
+    /// calling `init` again (e.g. after a project was closed) returns a new
+    /// session reusing the initialized library.
     pub fn init(prefix: Option<&Path>) -> Result<Ghdl, GhdlError> {
         let prefix = match prefix {
             Some(p) => p.to_path_buf(),
@@ -283,14 +339,20 @@ impl Ghdl {
         }
 
         let prefix_c = cstring(prefix.to_str().ok_or_else(|| err("prefix is not UTF-8"))?)?;
-        unsafe {
+
+        //  Serialize with any concurrent session, then run the one-time
+        //  library initialization.  Sessions created afterwards reuse the
+        //  initialized library as-is (e.g. after a project was closed).
+        let _lock = ghdl_lock();
+        LIBRARY_INIT.get_or_init(|| unsafe {
             ffi::libghdl_init();
             ffi::libghdl__set_hooks_for_analysis();
             ffi::libghdl__set_exec_prefix(prefix_c.as_ptr(), prefix_c.as_bytes().len() as u32);
             ffi::ghdlsynth__init_for_ghdl_synth();
-        }
+        });
         Ok(Ghdl {
             state: Cell::new(State::Fresh),
+            import_ctx: RefCell::new(None),
         })
     }
 
@@ -327,6 +389,7 @@ impl Ghdl {
     /// only once, on the first call).  Re-importing a library replaces its
     /// content.
     pub fn import(&self, opts: &ImportOptions) -> Result<(), GhdlError> {
+        let _lock = ghdl_lock();
         let st = self.state.get();
         assert!(st != State::SynthReady, "cannot import after synth()");
 
@@ -337,9 +400,12 @@ impl Ghdl {
         }
 
         if st == State::Fresh {
-            //  Loads the std library (must happen only once).
-            let r = unsafe { ffi::libghdl__analyze_init_status() };
-            if r != 0 {
+            //  Loads the std library.  Must happen only once per process,
+            //  even across several sessions (later sessions reuse it).
+            let status = *STANDARD_LIBRARIES_INIT.get_or_init(|| unsafe {
+                ffi::libghdl__analyze_init_status()
+            });
+            if status != 0 {
                 return Err(err("analysis initialization failed"));
             }
         }
@@ -379,6 +445,13 @@ impl Ghdl {
             self.check_errors(&format!("saving library {}", g.library))?;
         }
 
+        //  Remember the options used, so that compile() can re-apply them
+        //  even if another session changed the global ones in between.
+        *self.import_ctx.borrow_mut() = Some(ImportContext {
+            std: opts.std.to_owned(),
+            workdir: opts.workdir.to_owned(),
+        });
+
         self.state.set(State::LibrariesLoaded);
         Ok(())
     }
@@ -388,12 +461,30 @@ impl Ghdl {
     /// `ghdl -m`).  Required before [`Ghdl::synth`] when the files were
     /// imported with parse-only semantics, since synthesis elaborates the
     /// design and needs fully analyzed units.
+    ///
+    /// The `--std` and `--workdir` options set by [`Ghdl::import`] are
+    /// re-applied, since GHDL options are process-global and may have been
+    /// changed by another session in between.
     pub fn compile(&self) -> Result<(), GhdlError> {
+        let _lock = ghdl_lock();
         let st = self.state.get();
         if st == State::Fresh {
             return Err(err("nothing was imported; call import() first"));
         }
         assert!(st != State::SynthReady, "cannot compile after synth()");
+
+        //  Re-apply the options set by import(): GHDL options are global
+        //  and another session may have changed them (and closed its work
+        //  directory) in between.
+        let (std, workdir) = {
+            let ctx = self.import_ctx.borrow();
+            let ctx = ctx
+                .as_ref()
+                .ok_or_else(|| err("nothing was imported; call import() first"))?;
+            (ctx.std.clone(), ctx.workdir.clone())
+        };
+        self.set_option(&format!("--std={std}"))?;
+        self.set_option(&format!("--workdir={}", workdir.display()))?;
 
         //  Date_Parsed (units that still need analysis); see vhdl-nodes.ads.
         const DATE_PARSED: u32 = 4;
@@ -449,6 +540,7 @@ impl Ghdl {
     /// top design. May be called several times; `opts.files` is only allowed
     /// on the first call of a fresh session (one-shot mode).
     pub fn synth(&self, opts: &SynthOptions) -> Result<Design, GhdlError> {
+        let _lock = ghdl_lock();
         let st = self.state.get();
 
         let mut args: Vec<String> = Vec::new();
