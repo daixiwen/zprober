@@ -390,21 +390,6 @@ impl TypeResolver {
         self.libraries.contains(&name.to_lowercase())
     }
 
-    /// Whether the given ieee package is used by `scope` (or the entity its
-    /// architecture belongs to).
-    fn uses_package(&self, scope: &ScopeKey, library: &str, unit: &str) -> bool {
-        let target = ScopeKey::new(library, UnitKind::Package, unit);
-        let mut scopes = vec![scope.clone()];
-        if let Some(parent) = self.models.get(scope).and_then(|m| m.parent.clone()) {
-            scopes.push(parent);
-        }
-        scopes.iter().any(|s| {
-            self.models
-                .get(s)
-                .is_some_and(|model| model.visible.values().any(|v| *v == target))
-        })
-    }
-
     /// Find the target package of a package name (e.g. from a package
     /// instantiation declaration), handling the `work` alias.
     fn package_scope(&self, name: &Name, current_library: &str) -> Option<ScopeKey> {
@@ -460,7 +445,7 @@ impl TypeResolver {
             if is_predefined(&parts[0]) {
                 return ResolvedType::Standard { name: raw.clone() };
             }
-            if let Some(element) = self.predefined_array_element(&parts[0], scope) {
+            if let Some(element) = self.predefined_array_element(&parts[0]) {
                 return ResolvedType::Array {
                     element: Box::new(ResolvedType::Standard {
                         name: element.to_string(),
@@ -603,7 +588,7 @@ impl TypeResolver {
     }
 
     /// The element type of a predefined array type, if `name` is one.
-    fn predefined_array_element(&self, name: &str, scope: &ScopeKey) -> Option<&'static str> {
+    fn predefined_array_element(&self, name: &str) -> Option<&'static str> {
         let element = match name {
             "string" => "character",
             "integer_vector" => "integer",
