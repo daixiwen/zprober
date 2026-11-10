@@ -267,7 +267,11 @@ fn cmd_select_instance(interp: &mut Interp, context_id: ContextID, argv: &[Value
             .filter(|sig| sig.size > 0)
             .collect();
 
-        tcl_data.send_selected_instance(instance_path, signals_and_ports);
+        let probes = match tcl_data.project_probes.find_path(&instance_path) {
+            Some(entity) => entity.probes.clone(),
+            None => Vec::new(),
+        };
+        tcl_data.send_selected_instance(instance_path, signals_and_ports, probes);
         molt_ok!()
     }
 }

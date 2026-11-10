@@ -12,6 +12,8 @@ pub struct Data {
     pub vhdl_hierarchy: Option<crate::vhdl::Hierarchy>,
 
     pub project_entries: Vec<crate::tcl::project::ProjectEntry>,
+
+    pub project_probes: crate::probes::entity::Entity,
 }
 
 impl Data {
@@ -22,6 +24,7 @@ impl Data {
             vhdl_project: None,
             vhdl_hierarchy: None,
             project_entries: Vec::new(),
+            project_probes: Default::default(),
         }
     }
 
@@ -60,7 +63,8 @@ impl Data {
         &self,
         instance_path: String,
         signals: Vec<crate::vhdl::hierarchy::Signal>,
+        probes: Vec<crate::probes::Probe>,
     ) {
-        self.send_msg(MsgFromTcl::SelectInstance(instance_path, signals));
+        self.send_msg(MsgFromTcl::SelectInstance(instance_path, signals, probes));
     }
 }
