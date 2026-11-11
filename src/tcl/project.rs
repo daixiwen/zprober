@@ -5,6 +5,7 @@ use super::data::Data;
 use molt::{ContextID, Exception, Interp, MoltResult, Value, check_args, molt_err, molt_ok};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 /// Describes an entry in the project hierarchy
 #[derive(Debug, Clone)]
@@ -38,6 +39,7 @@ impl std::fmt::Display for ProjectEntry {
 pub fn install_tcl(interpreter: &mut molt::Interp, data_id: molt::ContextID) {
     interpreter.add_context_command("import_vhdl_ls", cmd_import_vhdl_ls, data_id);
     interpreter.add_context_command("select_instance", cmd_select_instance, data_id);
+    interpreter.add_context_command("change_probe", cmd_change_probe, data_id);
 }
 
 /// new project from a vhdl_ls.toml file
@@ -274,4 +276,51 @@ fn cmd_select_instance(interp: &mut Interp, context_id: ContextID, argv: &[Value
         tcl_data.send_selected_instance(instance_path, signals_and_ports, probes);
         molt_ok!()
     }
+}
+
+/// change a probe in a select an instance in the project
+fn cmd_change_probe(interp: &mut Interp, context_id: ContextID, argv: &[Value]) -> MoltResult {
+    check_args(1, argv, 4, 4, "instance_path signal_name probe_type")?;
+    let tcl_data: &mut Data = interp.context(context_id);
+    let instance_path = argv[1].to_string();
+    let signal_name = argv[2].to_string();
+
+    let probe_entity = tcl_data.project_probes.find_path_mut(&instance_path);
+    match crate::probes::probe::ProbeChannel::from_str(&argv[3].to_string()) {
+        Err(_) => {
+            if argv[3].to_string().to_lowercase() == "none" {
+                // remove signal from the list, if found
+                probe_entity.probes.retain(|p| p.signal_name != signal_name);
+            } else {
+                molt_err!("change_probe: unknown probe type {}", argv[3])?;
+            }
+        }
+        Ok(channel) => {
+            // try to find the probe in the list
+            match probe_entity
+                .probes
+                .iter_mut()
+                .find(|p| p.signal_name == signal_name)
+            {
+                Some(probe) => {
+                    tracing::event!(
+                        tracing::Level::DEBUG,
+                        instance_path,
+                        signal_name,
+                        channel = channel.to_string(),
+                        "modifying existing probe"
+                    );
+                    probe.channel = channel;
+                }
+                None => probe_entity.probes.push(crate::probes::Probe {
+                    channel,
+                    signal_name,
+                }),
+            }
+        }
+    }
+    // send the updated probes list back to the GUI
+    let probes = probe_entity.probes.clone();
+    tcl_data.send_update_probes(instance_path, probes);
+    molt_ok!()
 }

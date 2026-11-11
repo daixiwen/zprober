@@ -1,5 +1,6 @@
 use egui_tracing::tracing_subscriber::layer::SubscriberExt;
 use egui_tracing::tracing_subscriber::util::SubscriberInitExt;
+use std::sync::mpsc;
 use tracing::{Level, event};
 
 use crate::gui::{self, panes};
@@ -13,10 +14,37 @@ pub struct ZProberApp {
     pub context: ZProberAppContext,
 }
 
+pub struct ConsoleFifo {
+    sender: mpsc::Sender<String>,
+    receiver: mpsc::Receiver<String>,
+}
+
+impl Default for ConsoleFifo {
+    fn default() -> Self {
+        let (sender, receiver) = mpsc::channel();
+
+        ConsoleFifo { sender, receiver }
+    }
+}
+
+impl ConsoleFifo {
+    fn send(&self, msg: &str) {
+        self.sender
+            .send(msg.to_owned())
+            .expect("console channel closed");
+    }
+    fn receive(&self) -> Option<String> {
+        self.receiver.try_recv().ok()
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct ZProberAppContext {
     pub settings: panes::Settings,
     pub console: gui::console::ConsoleWindow,
+
+    #[serde(skip)]
+    console_channel: ConsoleFifo,
 
     #[serde(skip)]
     pub collector: egui_tracing::EventCollector,
@@ -39,6 +67,11 @@ pub struct ZProberAppContext {
 
 impl ZProberAppContext {
     pub fn execute_tcl(&self, cmd: &str) {
+        self.console_channel.send(cmd);
+        self.tcl.execute(cmd);
+    }
+
+    pub fn execute_tcl_noprint(&self, cmd: &str) {
         self.tcl.execute(cmd);
     }
 }
@@ -55,6 +88,7 @@ impl Default for ZProberAppContext {
         ZProberAppContext {
             settings: panes::Settings::new(),
             console,
+            console_channel: Default::default(),
             collector: Default::default(),
             tcl: Default::default(),
             project_entries: Default::default(),
@@ -127,7 +161,7 @@ impl eframe::App for ZProberApp {
     /// draw the GUI
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         // check messages from the TCL thread
-        if let Some(msg) = self.context.tcl.receive() {
+        while let Some(msg) = self.context.tcl.receive() {
             event!(Level::DEBUG, ?msg, "received message from TCL");
             match msg {
                 MsgFromTcl::Write(msg) => {
@@ -152,6 +186,19 @@ impl eframe::App for ZProberApp {
                     self.context.signals = signals;
                     self.context.probes = probes;
                 }
+                MsgFromTcl::UpdateProbes(probes_path, probes) => {
+                    if probes_path == self.context.selected_path {
+                        tracing::event!(tracing::Level::DEBUG, probes_path, "updating probes");
+                        self.context.probes = probes;
+                    } else {
+                        tracing::event!(
+                            tracing::Level::DEBUG,
+                            probes_path,
+                            current_path = self.context.selected_path,
+                            "ignoring probe update message"
+                        );
+                    }
+                }
             }
         }
 
@@ -160,5 +207,10 @@ impl eframe::App for ZProberApp {
         egui::CentralPanel::default().show(ui, |ui| {
             crate::gui::panes::tree_ui(ui, &mut self.tiles_tree, &mut self.context);
         });
+
+        // if one of more TCL commands were executed from the GUI, write them in the console
+        if let Some(cmd) = self.context.console_channel.receive() {
+            self.context.console.write_nonl(&cmd);
+        }
     }
 }

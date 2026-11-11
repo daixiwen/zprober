@@ -74,7 +74,7 @@ impl<'a> egui_tiles::Behavior<Pane> for MyBehavior<'a> {
             }
             Pane::Console => {
                 if let Some(cmd) = console::console_pane(ui, &mut self.context.console) {
-                    self.context.execute_tcl(&cmd);
+                    self.context.execute_tcl_noprint(&cmd);
                 };
             }
             Pane::Hierarchy => {

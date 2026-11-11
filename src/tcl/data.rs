@@ -67,4 +67,8 @@ impl Data {
     ) {
         self.send_msg(MsgFromTcl::SelectInstance(instance_path, signals, probes));
     }
+
+    pub fn send_update_probes(&self, instance_path: String, probes: Vec<crate::probes::Probe>) {
+        self.send_msg(MsgFromTcl::UpdateProbes(instance_path, probes));
+    }
 }

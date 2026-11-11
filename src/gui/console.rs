@@ -129,6 +129,16 @@ impl ConsoleWindow {
         self.force_cursor_to_end = true;
     }
 
+    /// Write a line to the console, without the leading newline
+    /// # Arguments
+    /// * `data` - the string to write
+    ///
+    pub fn write_nonl(&mut self, data: &str) {
+        self.text.push_str(data);
+        self.truncate_scroll_back();
+        self.force_cursor_to_end = true;
+    }
+
     /// Loads the history from an iterator of strings
     /// # Arguments
     /// * `history` - an iterator of strings

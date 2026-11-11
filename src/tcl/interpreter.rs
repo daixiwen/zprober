@@ -156,8 +156,12 @@ pub enum MsgFromTcl {
     NewProjectHierarchy(Vec<super::project::ProjectEntry>),
     ResetGuiLayout,
     SelectInstance(
-        String,
-        Vec<crate::vhdl::hierarchy::Signal>,
-        Vec<crate::probes::Probe>,
+        String,                              // path
+        Vec<crate::vhdl::hierarchy::Signal>, // vhdl module
+        Vec<crate::probes::Probe>,           // probes for the module
+    ),
+    UpdateProbes(
+        String,                    // path
+        Vec<crate::probes::Probe>, // probes for the module
     ),
 }
