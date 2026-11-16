@@ -4163,8 +4163,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 [[package]]
 name = "vhdl_lang"
 version = "0.88.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d543d05cd68d260f807dbaab97a112f460586007e35637afbf2920833fb83445"
+source = "git+https://github.com/daixiwen/rust_hdl.git?branch=v0.88.0-exports#513a9901a4dddd703cbf9ce9ca18676be9a00110"
 dependencies = [
  "clap",
  "dirs",
@@ -4185,8 +4184,7 @@ dependencies = [
 [[package]]
 name = "vhdl_lang_macros"
 version = "0.88.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bedb65e64fd552cfb921dbeae2766c4c30c95d384e7f7fe0a3e33b073791e11d"
+source = "git+https://github.com/daixiwen/rust_hdl.git?branch=v0.88.0-exports#513a9901a4dddd703cbf9ce9ca18676be9a00110"
 dependencies = [
  "quote",
  "syn 3.0.9",

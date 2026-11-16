@@ -24,3 +24,4 @@ strum = "0.28.0"
 
 [patch.crates-io]
 egui_tracing = { git = "https://github.com/daixiwen/egui_tracing.git", branch = "egui_0.37.0" }
+vhdl_lang = { git = "https://github.com/daixiwen/rust_hdl.git", branch = "v0.88.0-exports" }

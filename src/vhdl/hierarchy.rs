@@ -75,6 +75,8 @@ pub struct DesignUnit {
     pub library: String,
     /// The source file where the design unit was declared
     pub file: PathBuf,
+    /// The source code itself
+    pub source: vhdl_lang::Source,
     /// The kind of design unit
     pub kind: DesignUnitKind,
     /// The name of the design unit (entity name or architecture name)
@@ -185,10 +187,10 @@ impl Hierarchy {
                 let mut diagnostics = NullDiagnostics;
                 match parser.parse_design_file(file, &mut diagnostics) {
                     Ok((source, design_file)) => {
-                        let _ = source; // source is used to resolve the file name
                         process_design_file(
                             &library.name,
                             file,
+                            source,
                             &design_file,
                             &mut units,
                             &mut instantiations,
@@ -291,6 +293,7 @@ impl Hierarchy {
 fn process_design_file(
     library: &str,
     file: &Path,
+    source: vhdl_lang::Source,
     design_file: &vhdl_lang::ast::DesignFile,
     units: &mut Vec<DesignUnit>,
     instantiations: &mut Vec<Instantiation>,
@@ -305,6 +308,7 @@ fn process_design_file(
                     units.push(DesignUnit {
                         library: library.to_string(),
                         file: file.to_path_buf(),
+                        source: source.clone(),
                         kind: DesignUnitKind::Entity,
                         name: ident.tree.item.to_string(),
                         entity: None,
@@ -326,6 +330,7 @@ fn process_design_file(
                     units.push(DesignUnit {
                         library: library.to_string(),
                         file: file.to_path_buf(),
+                        source: source.clone(),
                         kind: DesignUnitKind::Architecture,
                         name: ident.tree.item.to_string(),
                         entity: Some(entity_name.clone()),
