@@ -157,8 +157,10 @@ pub enum MsgFromTcl {
     ResetGuiLayout,
     SelectInstance(
         String,                              // path
-        Vec<crate::vhdl::hierarchy::Signal>, // vhdl module
+        Vec<crate::vhdl::hierarchy::Signal>, // vhdl module signals and ports
         Vec<crate::probes::Probe>,           // probes for the module
+        vhdl_lang::Source,                   // VHDL source file
+        crate::gui::SourceView,              // pre parsed information about the VHDL source file
     ),
     UpdateProbes(
         String,                    // path

@@ -64,8 +64,16 @@ impl Data {
         instance_path: String,
         signals: Vec<crate::vhdl::hierarchy::Signal>,
         probes: Vec<crate::probes::Probe>,
+        source: vhdl_lang::Source,
+        source_view: crate::gui::SourceView,
     ) {
-        self.send_msg(MsgFromTcl::SelectInstance(instance_path, signals, probes));
+        self.send_msg(MsgFromTcl::SelectInstance(
+            instance_path,
+            signals,
+            probes,
+            source,
+            source_view,
+        ));
     }
 
     pub fn send_update_probes(&self, instance_path: String, probes: Vec<crate::probes::Probe>) {

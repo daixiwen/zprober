@@ -63,6 +63,12 @@ pub struct ZProberAppContext {
 
     #[serde(skip)]
     pub probes: Vec<crate::probes::Probe>,
+
+    #[serde(skip)]
+    pub source: Option<vhdl_lang::Source>,
+
+    #[serde(skip)]
+    pub source_view: Option<crate::gui::SourceView>,
 }
 
 impl ZProberAppContext {
@@ -95,6 +101,8 @@ impl Default for ZProberAppContext {
             selected_path: Default::default(),
             signals: Default::default(),
             probes: Default::default(),
+            source: None,
+            source_view: None,
         }
     }
 }
@@ -110,6 +118,7 @@ fn create_tree() -> egui_tiles::Tree<panes::Pane> {
         tiles.insert_pane(panes::Pane::Console),
         tiles.insert_pane(panes::Pane::Hierarchy),
         tiles.insert_pane(panes::Pane::Signals),
+        tiles.insert_pane(panes::Pane::Source),
     ];
     let root: egui_tiles::TileId = tiles.insert_tab_tile(tabs);
 
@@ -181,10 +190,12 @@ impl eframe::App for ZProberApp {
                 MsgFromTcl::ResetGuiLayout => {
                     self.tiles_tree = create_tree();
                 }
-                MsgFromTcl::SelectInstance(new_path, signals, probes) => {
+                MsgFromTcl::SelectInstance(new_path, signals, probes, source, source_view) => {
                     self.context.selected_path = new_path;
                     self.context.signals = signals;
                     self.context.probes = probes;
+                    self.context.source = Some(source);
+                    self.context.source_view = Some(source_view);
                 }
                 MsgFromTcl::UpdateProbes(probes_path, probes) => {
                     if probes_path == self.context.selected_path {

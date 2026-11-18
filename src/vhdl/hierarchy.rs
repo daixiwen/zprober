@@ -17,6 +17,7 @@ use vhdl_lang::ast::{
 };
 use vhdl_lang::{NullDiagnostics, VHDLParser};
 
+use crate::gui::SourceView;
 use crate::vhdl::project::Project;
 use crate::vhdl::types::{ResolvedType, TypeResolver};
 
@@ -77,6 +78,8 @@ pub struct DesignUnit {
     pub file: PathBuf,
     /// The source code itself
     pub source: vhdl_lang::Source,
+    /// parsed source ready for syntax highlighting
+    pub source_view: Option<crate::gui::SourceView>,
     /// The kind of design unit
     pub kind: DesignUnitKind,
     /// The name of the design unit (entity name or architecture name)
@@ -271,13 +274,37 @@ impl Hierarchy {
     }
 
     /// get a list of ports and signals in an entity
-    pub fn ports_and_signals(&self, entity: QualifiedName) -> Vec<Signal> {
+    pub fn ports_and_signals(&self, entity: &QualifiedName) -> Vec<Signal> {
         self.units
             .iter()
-            .filter(|u| u.qualified_name() == entity)
+            .filter(|u| u.qualified_name() == *entity)
             .fold(Vec::new(), |signals, unit| {
                 [signals, unit.signals.clone()].concat()
             })
+    }
+
+    /// get the VHDL source with pre-parsed information for an entity
+    pub fn source(&self, entity: &QualifiedName) -> (vhdl_lang::Source, SourceView) {
+        let entity_declaration = self
+            .units
+            .iter()
+            .find(|u| u.qualified_name() == *entity && u.kind == DesignUnitKind::Entity);
+
+        match entity_declaration {
+            Some(entity) => {
+                let source = entity.source.clone();
+                let source_view = entity.source_view.clone().unwrap_or(SourceView::default());
+
+                (source, source_view)
+            }
+            None => {
+                tracing::error!("entity declaration for {} not found", entity);
+                (
+                    vhdl_lang::Source::inline(Path::new(""), ""),
+                    SourceView::default(),
+                )
+            }
+        }
     }
 
     /// get a list of entities who instantiate a fpgacapzero core, from a list of names
@@ -309,6 +336,7 @@ fn process_design_file(
                         library: library.to_string(),
                         file: file.to_path_buf(),
                         source: source.clone(),
+                        source_view: Some(crate::gui::SourceView::new(&source, &design_file)),
                         kind: DesignUnitKind::Entity,
                         name: ident.tree.item.to_string(),
                         entity: None,
@@ -331,6 +359,7 @@ fn process_design_file(
                         library: library.to_string(),
                         file: file.to_path_buf(),
                         source: source.clone(),
+                        source_view: None,
                         kind: DesignUnitKind::Architecture,
                         name: ident.tree.item.to_string(),
                         entity: Some(entity_name.clone()),

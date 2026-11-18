@@ -222,11 +222,12 @@ fn cmd_select_instance(interp: &mut Interp, context_id: ContextID, argv: &[Value
             );
         }
         let entry = found_entities.first().unwrap();
+        let name = QualifiedName {
+            library: entry.library.clone(),
+            name: entry.entity.clone(),
+        };
         let signals_and_ports = if let Some(hierarchy) = &tcl_data.vhdl_hierarchy {
-            hierarchy.ports_and_signals(QualifiedName {
-                library: entry.library.clone(),
-                name: entry.entity.clone(),
-            })
+            hierarchy.ports_and_signals(&name)
         } else {
             Vec::new()
         };
@@ -273,7 +274,22 @@ fn cmd_select_instance(interp: &mut Interp, context_id: ContextID, argv: &[Value
             Some(entity) => entity.probes.clone(),
             None => Vec::new(),
         };
-        tcl_data.send_selected_instance(instance_path, signals_and_ports, probes);
+
+        let (source, source_view) = if let Some(hierarchy) = &tcl_data.vhdl_hierarchy {
+            hierarchy.source(&name)
+        } else {
+            (
+                vhdl_lang::Source::inline(std::path::Path::new(""), ""),
+                crate::gui::SourceView::default(),
+            )
+        };
+        tcl_data.send_selected_instance(
+            instance_path,
+            signals_and_ports,
+            probes,
+            source,
+            source_view,
+        );
         molt_ok!()
     }
 }

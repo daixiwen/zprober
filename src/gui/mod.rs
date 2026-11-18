@@ -4,3 +4,5 @@ pub mod menu;
 pub mod panes;
 pub mod signals;
 pub mod source;
+
+pub use source::SourceView;
