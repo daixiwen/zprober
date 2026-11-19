@@ -105,6 +105,9 @@ impl SourceView {
     /// create a source view from a parsed VHDL file
     pub fn new(source: &vhdl_lang::Source, design_file: &vhdl_lang::ast::DesignFile) -> Self {
         let mut sections: Vec<Vec<SourceSection>> = Vec::new();
+        let signal_tokens_vec = crate::vhdl::signal_tokens::extract_tokens(&design_file);
+        let mut signal_tokens = signal_tokens_vec.iter();
+        let mut current_signal_token = signal_tokens.next();
 
         if source.contents().num_lines() != 0 {
             let end_of_file = source.contents().end();
@@ -151,175 +154,181 @@ impl SourceView {
                     }
 
                     // now add the token
-                    let section_kind = SourceSectionKind::FixedText(match token.kind {
-                        Kind::Architecture
-                        | Kind::Entity
-                        | Kind::Configuration
-                        | Kind::Package
-                        | Kind::Block
-                        | Kind::Process
-                        | Kind::Generate
-                        | Kind::Postponed
-                        | Kind::Library
-                        | Kind::Label
-                        | Kind::Use
-                        | Kind::Context
-                        | Kind::Body
-                        | Kind::Component
-                        | Kind::Is
-                        | Kind::Return
-                        | Kind::Null
-                        | Kind::Of
-                        | Kind::On
-                        | Kind::Generic
-                        | Kind::Map
-                        | Kind::Default
-                        | Kind::Port
-                        | Kind::Attribute
-                        | Kind::Begin
-                        | Kind::If
-                        | Kind::Loop
-                        | Kind::While
-                        | Kind::Case
-                        | Kind::Else
-                        | Kind::Elsif
-                        | Kind::Then
-                        | Kind::When
-                        | Kind::With
-                        | Kind::Select
-                        | Kind::Next
-                        | Kind::Exit
-                        | Kind::For
-                        | Kind::Force
-                        | Kind::Release
-                        | Kind::Assert
-                        | Kind::Report
-                        | Kind::Severity
-                        | Kind::Wait
-                        | Kind::After
-                        | Kind::Transport
-                        | Kind::Inertial
-                        | Kind::Reject
-                        | Kind::Unaffected
-                        | Kind::Until
-                        | Kind::End
-                        | Kind::All
-                        | Kind::Range
-                        | Kind::Downto
-                        | Kind::To
-                        | Kind::In
-                        | Kind::Out
-                        | Kind::InOut
-                        | Kind::Buffer
-                        | Kind::Linkage
-                        | Kind::Signal
-                        | Kind::Constant
-                        | Kind::Variable
-                        | Kind::File
-                        | Kind::Open
-                        | Kind::Alias
-                        | Kind::Shared
-                        | Kind::Others
-                        | Kind::Record
-                        | Kind::Type
-                        | Kind::Subtype
-                        | Kind::Access
-                        | Kind::Units
-                        | Kind::New
-                        | Kind::Array
-                        | Kind::Protected
-                        | Kind::Pure
-                        | Kind::Impure
-                        | Kind::Function
-                        | Kind::Procedure
-                        | Kind::Vunit
-                        | Kind::Parameter
-                        | Kind::Literal
-                        | Kind::Bus
-                        | Kind::Disconnect
-                        | Kind::Group
-                        | Kind::Guarded
-                        | Kind::Register
-                        | Kind::Assume
-                        | Kind::AssumeGuarantee
-                        | Kind::Cover
-                        | Kind::Fairness
-                        | Kind::Property
-                        | Kind::Restrict
-                        | Kind::RestrictGuarantee
-                        | Kind::Sequence
-                        | Kind::Strong
-                        | Kind::Vmode
-                        | Kind::Vprop
-                        | Kind::Private
-                        | Kind::View
-                        | Kind::Vpkg => ColorKind::Keyword,
+                    let section_kind = if let Some(token_pos) = current_signal_token && token_pos.pos_match(current_position) {
+                        let kind = SourceSectionKind::Signal(token_pos.name.clone());
+                        current_signal_token = signal_tokens.next();
+                        kind
+                    } else { 
+                        SourceSectionKind::FixedText(match token.kind {
+                            Kind::Architecture
+                            | Kind::Entity
+                            | Kind::Configuration
+                            | Kind::Package
+                            | Kind::Block
+                            | Kind::Process
+                            | Kind::Generate
+                            | Kind::Postponed
+                            | Kind::Library
+                            | Kind::Label
+                            | Kind::Use
+                            | Kind::Context
+                            | Kind::Body
+                            | Kind::Component
+                            | Kind::Is
+                            | Kind::Return
+                            | Kind::Null
+                            | Kind::Of
+                            | Kind::On
+                            | Kind::Generic
+                            | Kind::Map
+                            | Kind::Default
+                            | Kind::Port
+                            | Kind::Attribute
+                            | Kind::Begin
+                            | Kind::If
+                            | Kind::Loop
+                            | Kind::While
+                            | Kind::Case
+                            | Kind::Else
+                            | Kind::Elsif
+                            | Kind::Then
+                            | Kind::When
+                            | Kind::With
+                            | Kind::Select
+                            | Kind::Next
+                            | Kind::Exit
+                            | Kind::For
+                            | Kind::Force
+                            | Kind::Release
+                            | Kind::Assert
+                            | Kind::Report
+                            | Kind::Severity
+                            | Kind::Wait
+                            | Kind::After
+                            | Kind::Transport
+                            | Kind::Inertial
+                            | Kind::Reject
+                            | Kind::Unaffected
+                            | Kind::Until
+                            | Kind::End
+                            | Kind::All
+                            | Kind::Range
+                            | Kind::Downto
+                            | Kind::To
+                            | Kind::In
+                            | Kind::Out
+                            | Kind::InOut
+                            | Kind::Buffer
+                            | Kind::Linkage
+                            | Kind::Signal
+                            | Kind::Constant
+                            | Kind::Variable
+                            | Kind::File
+                            | Kind::Open
+                            | Kind::Alias
+                            | Kind::Shared
+                            | Kind::Others
+                            | Kind::Record
+                            | Kind::Type
+                            | Kind::Subtype
+                            | Kind::Access
+                            | Kind::Units
+                            | Kind::New
+                            | Kind::Array
+                            | Kind::Protected
+                            | Kind::Pure
+                            | Kind::Impure
+                            | Kind::Function
+                            | Kind::Procedure
+                            | Kind::Vunit
+                            | Kind::Parameter
+                            | Kind::Literal
+                            | Kind::Bus
+                            | Kind::Disconnect
+                            | Kind::Group
+                            | Kind::Guarded
+                            | Kind::Register
+                            | Kind::Assume
+                            | Kind::AssumeGuarantee
+                            | Kind::Cover
+                            | Kind::Fairness
+                            | Kind::Property
+                            | Kind::Restrict
+                            | Kind::RestrictGuarantee
+                            | Kind::Sequence
+                            | Kind::Strong
+                            | Kind::Vmode
+                            | Kind::Vprop
+                            | Kind::Private
+                            | Kind::View
+                            | Kind::Vpkg => ColorKind::Keyword,
 
-                        Kind::Abs
-                        | Kind::Not
-                        | Kind::Plus
-                        | Kind::Minus
-                        | Kind::QueQue
-                        | Kind::And
-                        | Kind::Or
-                        | Kind::Nand
-                        | Kind::Nor
-                        | Kind::Xor
-                        | Kind::Xnor
-                        | Kind::SLL
-                        | Kind::SRL
-                        | Kind::SLA
-                        | Kind::SRA
-                        | Kind::ROL
-                        | Kind::ROR
-                        | Kind::Mod
-                        | Kind::Rem
-                        | Kind::EQ
-                        | Kind::NE
-                        | Kind::LT
-                        | Kind::LTE
-                        | Kind::GT
-                        | Kind::GTE
-                        | Kind::QueEQ
-                        | Kind::QueNE
-                        | Kind::QueLT
-                        | Kind::QueLTE
-                        | Kind::QueGT
-                        | Kind::QueGTE
-                        | Kind::Que
-                        | Kind::Times
-                        | Kind::Pow
-                        | Kind::Div => ColorKind::Operator,
+                            Kind::Abs
+                            | Kind::Not
+                            | Kind::Plus
+                            | Kind::Minus
+                            | Kind::QueQue
+                            | Kind::And
+                            | Kind::Or
+                            | Kind::Nand
+                            | Kind::Nor
+                            | Kind::Xor
+                            | Kind::Xnor
+                            | Kind::SLL
+                            | Kind::SRL
+                            | Kind::SLA
+                            | Kind::SRA
+                            | Kind::ROL
+                            | Kind::ROR
+                            | Kind::Mod
+                            | Kind::Rem
+                            | Kind::EQ
+                            | Kind::NE
+                            | Kind::LT
+                            | Kind::LTE
+                            | Kind::GT
+                            | Kind::GTE
+                            | Kind::QueEQ
+                            | Kind::QueNE
+                            | Kind::QueLT
+                            | Kind::QueLTE
+                            | Kind::QueGT
+                            | Kind::QueGTE
+                            | Kind::Que
+                            | Kind::Times
+                            | Kind::Pow
+                            | Kind::Div => ColorKind::Operator,
 
-                        Kind::Identifier => ColorKind::Name,
+                            Kind::Identifier => ColorKind::Name,
 
-                        Kind::AbstractLiteral
-                        | Kind::StringLiteral
-                        | Kind::BitString
-                        | Kind::Character => ColorKind::Literal,
+                            Kind::AbstractLiteral
+                            | Kind::StringLiteral
+                            | Kind::BitString
+                            | Kind::Character => ColorKind::Literal,
 
-                        Kind::Tick
-                        | Kind::LeftPar
-                        | Kind::RightPar
-                        | Kind::LeftSquare
-                        | Kind::RightSquare
-                        | Kind::SemiColon
-                        | Kind::Colon
-                        | Kind::Bar
-                        | Kind::Dot
-                        | Kind::BOX
-                        | Kind::LtLt
-                        | Kind::GtGt
-                        | Kind::Circ
-                        | Kind::CommAt
-                        | Kind::Concat
-                        | Kind::Comma
-                        | Kind::ColonEq
-                        | Kind::RightArrow
-                        | Kind::GraveAccent => ColorKind::Operator,
+                            Kind::Tick
+                            | Kind::LeftPar
+                            | Kind::RightPar
+                            | Kind::LeftSquare
+                            | Kind::RightSquare
+                            | Kind::SemiColon
+                            | Kind::Colon
+                            | Kind::Bar
+                            | Kind::Dot
+                            | Kind::BOX
+                            | Kind::LtLt
+                            | Kind::GtGt
+                            | Kind::Circ
+                            | Kind::CommAt
+                            | Kind::Concat
+                            | Kind::Comma
+                            | Kind::ColonEq
+                            | Kind::RightArrow
+                            | Kind::GraveAccent => ColorKind::Operator,
 
-                        Kind::Text => ColorKind::Comment,
-                    });
+                            Kind::Text => ColorKind::Comment,
+                        })
+                    };
                     let token_end = token.pos.end();
                     // if the token spans on several lines, store them
                     while current_position.line < token_end.line {

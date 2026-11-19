@@ -10,6 +10,9 @@ pub mod injection;
 /// Instantiation hierarchy built from a VHDL project
 pub mod hierarchy;
 
+/// look for all tokens corresponding to a port of a signal in a source tile
+pub mod signal_tokens;
+
 pub use hierarchy::{
     DesignUnit, DesignUnitKind, Hierarchy, Instantiation, QualifiedName, Signal, SignalMode,
 };
