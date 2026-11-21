@@ -336,7 +336,11 @@ fn process_design_file(
                         library: library.to_string(),
                         file: file.to_path_buf(),
                         source: source.clone(),
-                        source_view: Some(crate::gui::SourceView::new(&source, &design_file)),
+                        source_view: Some(crate::gui::SourceView::new(
+                            &ident.tree.item.to_string(),
+                            &source,
+                            design_file,
+                        )),
                         kind: DesignUnitKind::Entity,
                         name: ident.tree.item.to_string(),
                         entity: None,

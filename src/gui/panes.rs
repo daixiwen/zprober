@@ -12,7 +12,7 @@ pub enum Pane {
     Console,
     Hierarchy,
     Signals,
-    Source
+    Source,
 }
 
 /// display the complete tiles tree
