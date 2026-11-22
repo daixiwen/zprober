@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, strum::Display, strum::EnumString)]
+#[derive(
+    Clone, Debug, Serialize, Deserialize, PartialEq, Eq, strum::Display, strum::EnumString,
+)]
 pub enum ProbeChannel {
     EioIn,
     EioOut,

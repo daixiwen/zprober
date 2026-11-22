@@ -4,4 +4,4 @@ pub mod entity;
 pub mod probe;
 
 pub use entity::Entity;
-pub use probe::Probe;
+pub use probe::{Probe, ProbeChannel};

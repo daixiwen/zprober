@@ -1,7 +1,15 @@
+use std::collections::BTreeMap;
+
+use crate::probes::ProbeChannel;
+use egui::Color32;
+use egui::Widget;
 use egui::text::{ByteIndex, ByteRange, CharIndex};
 use egui::text_selection::text_cursor_state::byte_index_from_char_index;
 
 use vhdl_lang::Kind;
+
+/// size of the monospace text for source (maybe a preference later?)
+const MONOSPACE_SIZE: f32 = 14.0;
 
 /// structure holding all the data required for showing and interacting
 /// with VHDL source code
@@ -21,7 +29,7 @@ pub struct SourceSection {
 pub enum SourceSectionKind {
     FixedText(ColorKind),
     InstanceName(String, String), // library, entity
-    Signal(String),               // signal/port name
+    Signal(String),               // signal/port name, probe type
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -31,6 +39,80 @@ pub enum ColorKind {
     Operator,
     Name,
     Literal,
+}
+
+pub struct CodeColors {
+    pub background: Color32,
+    pub background_highlight: Color32,
+    pub comment: Color32,
+    pub keyword: Color32,
+    pub operator: Color32,
+    pub name: Color32,
+    pub literal: Color32,
+    pub signal_not_probed: Color32,
+    pub signal_probed_in: Color32,
+    pub signal_probed_out: Color32,
+    pub signal_probed_ela: Color32,
+}
+
+impl CodeColors {
+    /// create a color list from the theme (light or dark)
+    pub fn get(ui: &egui::Ui) -> Self {
+        let visuals = ui.visuals();
+
+        if visuals.dark_mode {
+            CodeColors {
+                background: visuals.window_fill,
+                background_highlight: visuals.extreme_bg_color,
+                comment: Color32::from_rgb(0x62, 0x72, 0xA4),
+                keyword: Color32::from_rgb(0x8B, 0xE9, 0xFD),
+                operator: Color32::from_rgb(0x50, 0xFA, 0x7B),
+                name: Color32::from_rgb(0xF8, 0xF8, 0xF2),
+                literal: Color32::from_rgb(0xFF, 0xB8, 0x6C),
+                signal_not_probed: Color32::from_rgb(0xFF, 0x79, 0xC6),
+                signal_probed_in: Color32::from_rgb(0xBD, 0x93, 0xF9),
+                signal_probed_out: Color32::from_rgb(0xFF, 0x55, 0x55),
+                signal_probed_ela: Color32::from_rgb(0xF1, 0xFA, 0x8C),
+            }
+        } else {
+            CodeColors {
+                background: visuals.window_fill,
+                background_highlight: visuals.extreme_bg_color,
+                comment: Color32::from_rgb(0x62, 0x72, 0xA4),
+                keyword: Color32::from_rgb(0x8B, 0xE9, 0xFD),
+                operator: Color32::from_rgb(0x50, 0xFA, 0x7B),
+                name: Color32::from_rgb(0x00, 0x00, 0x00),
+                literal: Color32::from_rgb(0xFF, 0xB8, 0x6C),
+                signal_not_probed: Color32::from_rgb(0xFF, 0x79, 0xC6),
+                signal_probed_in: Color32::from_rgb(0xBD, 0x93, 0xF9),
+                signal_probed_out: Color32::from_rgb(0xFF, 0x55, 0x55),
+                signal_probed_ela: Color32::from_rgb(0xF1, 0xFA, 0x8C),
+            }
+        }
+    }
+
+    /// return the correct color for a token based on its kind
+    pub fn colorize_token(&self, kind: &SourceSectionKind) -> Color32 {
+        match kind {
+            SourceSectionKind::FixedText(ColorKind::Comment) => self.comment,
+            SourceSectionKind::FixedText(ColorKind::Keyword) => self.keyword,
+            SourceSectionKind::FixedText(ColorKind::Literal) => self.literal,
+            SourceSectionKind::FixedText(ColorKind::Name) => self.name,
+            SourceSectionKind::FixedText(ColorKind::Operator) => self.operator,
+            SourceSectionKind::Signal(_) => self.name,
+            SourceSectionKind::InstanceName(_, _) => self.name,
+        }
+    }
+
+    /// return the correct color for a probed/prob_able signal
+    pub fn colorize_probe(&self, probe: &Option<ProbeChannel>) -> Color32 {
+        match probe {
+            None => self.signal_not_probed,
+            Some(ProbeChannel::EioIn) => self.signal_probed_in,
+            Some(ProbeChannel::EioOut) => self.signal_probed_out,
+            Some(ProbeChannel::Ela(_)) => self.signal_probed_ela,
+        }
+    }
 }
 
 /// add a source section to the list, merging it with the last element if they are of the same kind
@@ -404,34 +486,57 @@ impl SourceView {
     pub fn generate_job(
         &self,
         source: &vhdl_lang::Source,
+        probe_definitions: &BTreeMap<String, Option<crate::probes::ProbeChannel>>,
         line_number: usize,
+        num_lines_digits: usize,
+        code_colors: &CodeColors,
     ) -> egui::text::LayoutJob {
-        let line = source
-            .contents()
-            .get_line(line_number)
-            .map(|s| {
-                let mut s = s.to_owned();
-                // remove the end-of-line at the end
-                s.pop();
-                s
-            })
-            .unwrap_or_default();
+        let line = format!(
+            "{line_num:width$} {text}",
+            line_num = line_number,
+            width = num_lines_digits,
+            text = source
+                .contents()
+                .get_line(line_number)
+                .map(|s| {
+                    let mut s = s.to_owned();
+                    // remove the end-of-line at the end
+                    s.pop();
+                    s
+                })
+                .unwrap_or_default()
+        );
         let line_length = line.len();
 
-        fn create_section(range: &ByteRange, color: egui::Color32) -> egui::text::LayoutSection {
+        fn create_section(
+            range: &ByteRange,
+            range_shift: usize,
+            color_fg: egui::Color32,
+            color_bg: egui::Color32,
+            underline: bool,
+        ) -> egui::text::LayoutSection {
+            let underline_stroke = if underline {
+                egui::Stroke::new(1.0, color_fg)
+            } else {
+                egui::Stroke::NONE
+            };
+
             egui::text::LayoutSection {
                 leading_space: 0.0,
-                byte_range: range.to_owned(),
+                byte_range: ByteRange {
+                    start: range.start + range_shift,
+                    end: range.end + range_shift,
+                },
                 format: egui::text::TextFormat {
-                    font_id: egui::FontId::monospace(12.0),
+                    font_id: egui::FontId::monospace(MONOSPACE_SIZE),
                     extra_letter_spacing: 0.0,
                     line_height: None,
-                    color,
-                    background: egui::Color32::BLACK,
+                    color: color_fg,
+                    background: color_bg,
                     expand_bg: 1.0,
                     coords: Default::default(),
                     italics: false,
-                    underline: egui::Stroke::NONE,
+                    underline: underline_stroke,
                     strikethrough: egui::Stroke::NONE,
                     valign: egui::Align::Center,
                 },
@@ -443,26 +548,54 @@ impl SourceView {
                     start: ByteIndex(0),
                     end: ByteIndex(line_length - 1),
                 },
-                egui::Color32::BLUE,
+                0,
+                code_colors.comment,
+                code_colors.background,
+                false,
             )],
-            Some(source_sections) => source_sections
-                .iter()
-                .map(|ss| {
-                    create_section(
-                        &ss.range,
-                        match ss.kind {
-                            SourceSectionKind::FixedText(ColorKind::Comment) => egui::Color32::GRAY,
-                            SourceSectionKind::FixedText(ColorKind::Keyword) => egui::Color32::RED,
-                            SourceSectionKind::FixedText(ColorKind::Literal) => egui::Color32::BLUE,
-                            SourceSectionKind::FixedText(ColorKind::Name) => egui::Color32::GREEN,
-                            SourceSectionKind::FixedText(ColorKind::Operator) => {
-                                egui::Color32::YELLOW
-                            }
-                            _ => egui::Color32::WHITE,
-                        },
-                    )
-                })
-                .collect(),
+            Some(source_sections) => {
+                let mut secs = vec![create_section(
+                    &ByteRange {
+                        start: ByteIndex(0),
+                        end: ByteIndex(num_lines_digits + 1),
+                    },
+                    0,
+                    code_colors.comment,
+                    code_colors.background,
+                    false,
+                )];
+                let mut other_secs: Vec<egui::text::LayoutSection> =
+                    source_sections
+                        .iter()
+                        .map(|ss| {
+                            let (color_fg, color_bg, underline) =
+                                if let SourceSectionKind::Signal(name) = &ss.kind
+                                    && let Some(optional_channel) = probe_definitions.get(name)
+                                {
+                                    (
+                                        code_colors.colorize_probe(optional_channel),
+                                        code_colors.background_highlight,
+                                        true,
+                                    )
+                                } else {
+                                    (
+                                        code_colors.colorize_token(&ss.kind),
+                                        code_colors.background,
+                                        false,
+                                    )
+                                };
+                            create_section(
+                                &ss.range,
+                                num_lines_digits + 1,
+                                color_fg,
+                                color_bg,
+                                underline,
+                            )
+                        })
+                        .collect();
+                secs.append(&mut other_secs);
+                secs
+            }
         };
         egui::text::LayoutJob {
             text: line,
@@ -494,17 +627,46 @@ pub fn panel(ui: &mut egui::Ui, context: &crate::app::ZProberAppContext) {
             ui.label(&context.selected_path)
         });
 
+        // build the tree of probes (maybe cache it in the context later?)
+        let probe_definitions: BTreeMap<String, Option<ProbeChannel>> = context
+            .signals
+            .iter()
+            .map(|s| {
+                let channel = context
+                    .probes
+                    .iter()
+                    .find(|p| p.signal_name == s.name)
+                    .map(|p| p.channel.clone());
+
+                (s.name.clone(), channel)
+            })
+            .collect();
+
         // code view
         if let (Some(source), Some(source_view)) = (&context.source, &context.source_view) {
+            // some constants to help with the scroll area show
+            let font_id = egui::FontId::new(MONOSPACE_SIZE, egui::FontFamily::Monospace);
+            let row_height = ui.ctx().fonts_mut(|fonts| fonts.row_height(&font_id));
+            let num_lines = source.contents().num_lines();
+            let num_lines_digits = (num_lines as f32).log10().ceil() as usize;
+            let code_colors = CodeColors::get(ui);
+
             egui::ScrollArea::both()
                 .auto_shrink([false, false])
                 .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
-                .show(ui, |ui| {
-                    ui.vertical(|ui| {
-                        for i in 0..source.contents().num_lines() {
-                            ui.label(source_view.generate_job(source, i));
-                        }
-                    });
+                .show_rows(ui, row_height, num_lines, |ui, row_range| {
+                    for i in row_range {
+                        egui::Label::new(source_view.generate_job(
+                            source,
+                            &probe_definitions,
+                            i,
+                            num_lines_digits,
+                            &code_colors,
+                        ))
+                        .selectable(false)
+                        .extend()
+                        .ui(ui);
+                    }
                 });
         }
     });
