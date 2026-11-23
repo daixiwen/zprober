@@ -69,6 +69,15 @@ pub struct ZProberAppContext {
 
     #[serde(skip)]
     pub source_view: Option<crate::gui::SourceView>,
+
+    #[serde(skip)]
+    pub source_view_signal_popup_name: Option<String>,
+
+    #[serde(skip)]
+    pub source_view_signal_popup_position: egui::Pos2,
+
+    #[serde(skip)]
+    pub source_view_signal_probe: Option<crate::probes::ProbeChannel>
 }
 
 impl ZProberAppContext {
@@ -103,6 +112,9 @@ impl Default for ZProberAppContext {
             probes: Default::default(),
             source: None,
             source_view: None,
+            source_view_signal_popup_name: None,
+            source_view_signal_popup_position: Default::default(),
+            source_view_signal_probe: None
         }
     }
 }

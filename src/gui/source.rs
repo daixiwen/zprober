@@ -2,10 +2,11 @@ use std::collections::BTreeMap;
 
 use crate::probes::ProbeChannel;
 use egui::Color32;
-use egui::Widget;
+use egui::Sense;
 use egui::text::{ByteIndex, ByteRange, CharIndex};
 use egui::text_selection::text_cursor_state::byte_index_from_char_index;
 
+use egui::vec2;
 use vhdl_lang::Kind;
 
 /// size of the monospace text for source (maybe a preference later?)
@@ -482,6 +483,17 @@ impl SourceView {
         SourceView { sections }
     }
 
+    /// find the signal at the indicated cursor position
+    pub fn signal_at_pos(&self, line_number: usize, position: CharIndex) -> Option<String> {
+        if let Some(line) = self.sections.get(line_number) &&
+            let Some(section) = line.iter().find(|s| s.range.contains(&ByteIndex(usize::from(position)))) &&
+                let SourceSectionKind::Signal(name) = &section.kind {
+                    Some(name.clone())
+        } else {
+            None
+        }
+    }
+
     /// generate a vector of layout jobs from the source view
     pub fn generate_job(
         &self,
@@ -617,8 +629,8 @@ impl SourceView {
 }
 
 /// pane with the source file
-pub fn panel(ui: &mut egui::Ui, context: &crate::app::ZProberAppContext) {
-    ui.vertical(|ui| {
+pub fn panel(ui: &mut egui::Ui, context: &mut crate::app::ZProberAppContext) {
+    let uiresponse = ui.vertical(|ui| {
         // top line with the path
         ui.horizontal(|ui| {
             if ui.button("<").clicked() {
@@ -656,18 +668,75 @@ pub fn panel(ui: &mut egui::Ui, context: &crate::app::ZProberAppContext) {
                 .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
                 .show_rows(ui, row_height, num_lines, |ui, row_range| {
                     for i in row_range {
-                        egui::Label::new(source_view.generate_job(
+                        let (line_rect, response) = ui.allocate_exact_size(
+                            vec2(ui.available_width(), row_height), Sense::click());
+                        let galley = ui.painter().layout_job(source_view.generate_job(
                             source,
                             &probe_definitions,
                             i,
                             num_lines_digits,
                             &code_colors,
-                        ))
-                        .selectable(false)
-                        .extend()
-                        .ui(ui);
+                        ));
+                        let mouse_pos = if response.hovered() { galley.cursor_from_pos(response.hover_pos().unwrap_or_default()- line_rect.min).index} else { CharIndex(0)};
+                        if mouse_pos > CharIndex(num_lines_digits) && let Some(signal) = source_view.signal_at_pos(i, mouse_pos - (num_lines_digits + 1)) {
+                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                            if response.clicked() {
+                                if let Some(probe) = probe_definitions.get(&signal) {
+                                    context.source_view_signal_popup_name = Some(signal);
+                                    context.source_view_signal_probe = probe.clone();
+                                    context.source_view_signal_popup_position = response.hover_pos().unwrap_or_default();
+                                }
+                            }
+                        }
+
+                        ui.painter().galley(line_rect.min, galley, Color32::PLACEHOLDER);
                     }
                 });
+            
         }
     });
+
+        // display the popup to change a probe
+    let mut current_probe_selection = context.source_view_signal_probe.clone();
+    let popup_signal_name = context.source_view_signal_popup_name.clone();
+
+    if let Some(signal_name) = popup_signal_name {
+        let mut open = true;
+        egui::Popup::from_response(&uiresponse.response)
+            .open_bool(&mut open)
+            .at_position(context.source_view_signal_popup_position)
+            .show(|ui| {
+                let options = [
+                    None,
+                    Some(ProbeChannel::EioIn),
+                    Some(ProbeChannel::EioOut),
+                    Some(ProbeChannel::Ela(0)),
+                ];
+                for option in options {
+                    ui.selectable_value(
+                        &mut current_probe_selection,
+                        option.clone(),
+                        super::signals::probe_channel_to_text(&option, context),
+                    );
+                }
+
+            });
+
+        if current_probe_selection != context.source_view_signal_probe {
+            // selection has been changed
+            context.source_view_signal_popup_name = None;
+            let channel_text = match current_probe_selection {
+                None => "None".to_owned(),
+                Some(channel) => channel.to_string(),
+            };
+            context.execute_tcl(&format!(
+                "change_probe {} {} {}",
+                context.selected_path, signal_name, channel_text
+            ));
+        }
+        if !open {
+            context.source_view_signal_popup_name = None;
+        }
+    }
+
 }

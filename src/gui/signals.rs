@@ -2,7 +2,7 @@ use crate::probes::probe::ProbeChannel;
 use egui_extras::{Column, TableBuilder};
 
 /// convert an optional probe channel to a text to display
-fn probe_channel_to_text(
+pub fn probe_channel_to_text(
     probe: &Option<ProbeChannel>,
     _context: &crate::app::ZProberAppContext,
 ) -> String {

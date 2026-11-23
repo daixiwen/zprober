@@ -88,7 +88,7 @@ impl<'a> egui_tiles::Behavior<Pane> for MyBehavior<'a> {
                 super::signals::panel(ui, self.context);
             }
             Pane::Source => {
-                super::source::panel(ui, self.context);
+                super::source::panel(ui, &mut self.context);
             }
         }
 
