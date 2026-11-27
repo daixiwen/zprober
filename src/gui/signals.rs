@@ -1,21 +1,9 @@
-use crate::probes::probe::ProbeChannel;
 use egui_extras::{Column, TableBuilder};
-
-/// convert an optional probe channel to a text to display
-pub fn probe_channel_to_text(
-    probe: &Option<ProbeChannel>,
-    _context: &crate::app::ZProberAppContext,
-) -> String {
-    match probe {
-        None => "not connected".to_owned(),
-        Some(ProbeChannel::EioIn) => "EIO In".to_owned(),
-        Some(ProbeChannel::EioOut) => "EIO Out".to_owned(),
-        Some(ProbeChannel::Ela(_)) => "ELA".to_owned(),
-    }
-}
 
 /// pane with the signals
 pub fn panel(ui: &mut egui::Ui, context: &crate::app::ZProberAppContext) {
+    let colors = super::colors::CodeColors::get(ui);
+
     let table = TableBuilder::new(ui)
         .striped(true)
         .resizable(true)
@@ -52,37 +40,28 @@ pub fn panel(ui: &mut egui::Ui, context: &crate::app::ZProberAppContext) {
                 let previous_channel = probe.map(|p| p.channel.clone());
                 let mut channel = previous_channel.clone();
 
+                let color = colors.colorize_probe(&channel);
+
                 body.row(18.0, |mut row| {
                     row.col(|ui| {
-                        egui::ComboBox::from_id_salt(signal.name.clone())
-                            .selected_text(probe_channel_to_text(&channel, context))
-                            .show_ui(ui, |ui| {
-                                let options = [
-                                    None,
-                                    Some(ProbeChannel::EioIn),
-                                    Some(ProbeChannel::EioOut),
-                                    Some(ProbeChannel::Ela(0)),
-                                ];
-                                for option in options {
-                                    ui.selectable_value(
-                                        &mut channel,
-                                        option.clone(),
-                                        probe_channel_to_text(&option, context),
-                                    );
-                                }
-                            });
+                        egui::ComboBox::from_id_salt(&signal.name)
+                            .selected_text(super::probes::probe_channel_to_text(&channel, context))
+                            .show_ui(
+                                ui,
+                                super::probes::probe_menu_contents(&mut channel, context),
+                            );
                     });
                     row.col(|ui| {
-                        ui.label(&signal.name);
+                        ui.colored_label(color, &signal.name);
                     });
                     row.col(|ui| {
-                        ui.label(signal.mode.to_string());
+                        ui.colored_label(color, signal.mode.to_string());
                     });
                     row.col(|ui| {
-                        ui.label(&signal.signal_type);
+                        ui.colored_label(color, &signal.signal_type);
                     });
                     row.col(|ui| {
-                        ui.label(format!("{}", signal.size));
+                        ui.colored_label(color, format!("{}", signal.size));
                     });
                 });
 

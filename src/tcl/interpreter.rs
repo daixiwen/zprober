@@ -153,7 +153,10 @@ pub enum MsgFromTcl {
     Write(String),
     CommandOk(String),
     CommandError(String),
-    NewProjectHierarchy(Vec<super::project::ProjectEntry>),
+    NewProjectHierarchy(
+        crate::probes::Entity,             // whole project probes
+        Vec<super::project::ProjectEntry>, // project modules
+    ),
     ResetGuiLayout,
     SelectInstance(
         String,                              // path
@@ -163,7 +166,8 @@ pub enum MsgFromTcl {
         crate::gui::SourceView,              // pre parsed information about the VHDL source file
     ),
     UpdateProbes(
-        String,                    // path
-        Vec<crate::probes::Probe>, // probes for the module
+        crate::probes::Entity,     // whole project probes
+        String,                    // selected path
+        Vec<crate::probes::Probe>, // probes for the selected module
     ),
 }

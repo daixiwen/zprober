@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 
+use super::colors::CodeColors;
 use crate::probes::ProbeChannel;
+
 use egui::Color32;
 use egui::Sense;
 use egui::text::{ByteIndex, ByteRange, CharIndex};
@@ -40,80 +42,6 @@ pub enum ColorKind {
     Operator,
     Name,
     Literal,
-}
-
-pub struct CodeColors {
-    pub background: Color32,
-    pub background_highlight: Color32,
-    pub comment: Color32,
-    pub keyword: Color32,
-    pub operator: Color32,
-    pub name: Color32,
-    pub literal: Color32,
-    pub signal_not_probed: Color32,
-    pub signal_probed_in: Color32,
-    pub signal_probed_out: Color32,
-    pub signal_probed_ela: Color32,
-}
-
-impl CodeColors {
-    /// create a color list from the theme (light or dark)
-    pub fn get(ui: &egui::Ui) -> Self {
-        let visuals = ui.visuals();
-
-        if visuals.dark_mode {
-            CodeColors {
-                background: visuals.window_fill,
-                background_highlight: visuals.extreme_bg_color,
-                comment: Color32::from_rgb(0x62, 0x72, 0xA4),
-                keyword: Color32::from_rgb(0x8B, 0xE9, 0xFD),
-                operator: Color32::from_rgb(0x50, 0xFA, 0x7B),
-                name: Color32::from_rgb(0xF8, 0xF8, 0xF2),
-                literal: Color32::from_rgb(0xFF, 0xB8, 0x6C),
-                signal_not_probed: Color32::from_rgb(0xFF, 0x79, 0xC6),
-                signal_probed_in: Color32::from_rgb(0xBD, 0x93, 0xF9),
-                signal_probed_out: Color32::from_rgb(0xFF, 0x55, 0x55),
-                signal_probed_ela: Color32::from_rgb(0xF1, 0xFA, 0x8C),
-            }
-        } else {
-            CodeColors {
-                background: visuals.window_fill,
-                background_highlight: visuals.extreme_bg_color,
-                comment: Color32::from_rgb(0x62, 0x72, 0xA4),
-                keyword: Color32::from_rgb(0x8B, 0xE9, 0xFD),
-                operator: Color32::from_rgb(0x50, 0xFA, 0x7B),
-                name: Color32::from_rgb(0x00, 0x00, 0x00),
-                literal: Color32::from_rgb(0xFF, 0xB8, 0x6C),
-                signal_not_probed: Color32::from_rgb(0xFF, 0x79, 0xC6),
-                signal_probed_in: Color32::from_rgb(0xBD, 0x93, 0xF9),
-                signal_probed_out: Color32::from_rgb(0xFF, 0x55, 0x55),
-                signal_probed_ela: Color32::from_rgb(0xF1, 0xFA, 0x8C),
-            }
-        }
-    }
-
-    /// return the correct color for a token based on its kind
-    pub fn colorize_token(&self, kind: &SourceSectionKind) -> Color32 {
-        match kind {
-            SourceSectionKind::FixedText(ColorKind::Comment) => self.comment,
-            SourceSectionKind::FixedText(ColorKind::Keyword) => self.keyword,
-            SourceSectionKind::FixedText(ColorKind::Literal) => self.literal,
-            SourceSectionKind::FixedText(ColorKind::Name) => self.name,
-            SourceSectionKind::FixedText(ColorKind::Operator) => self.operator,
-            SourceSectionKind::Signal(_) => self.name,
-            SourceSectionKind::InstanceName(_, _) => self.name,
-        }
-    }
-
-    /// return the correct color for a probed/prob_able signal
-    pub fn colorize_probe(&self, probe: &Option<ProbeChannel>) -> Color32 {
-        match probe {
-            None => self.signal_not_probed,
-            Some(ProbeChannel::EioIn) => self.signal_probed_in,
-            Some(ProbeChannel::EioOut) => self.signal_probed_out,
-            Some(ProbeChannel::Ela(_)) => self.signal_probed_ela,
-        }
-    }
 }
 
 /// add a source section to the list, merging it with the last element if they are of the same kind
@@ -485,10 +413,13 @@ impl SourceView {
 
     /// find the signal at the indicated cursor position
     pub fn signal_at_pos(&self, line_number: usize, position: CharIndex) -> Option<String> {
-        if let Some(line) = self.sections.get(line_number) &&
-            let Some(section) = line.iter().find(|s| s.range.contains(&ByteIndex(usize::from(position)))) &&
-                let SourceSectionKind::Signal(name) = &section.kind {
-                    Some(name.clone())
+        if let Some(line) = self.sections.get(line_number)
+            && let Some(section) = line
+                .iter()
+                .find(|s| s.range.contains(&ByteIndex(usize::from(position))))
+            && let SourceSectionKind::Signal(name) = &section.kind
+        {
+            Some(name.clone())
         } else {
             None
         }
@@ -669,7 +600,9 @@ pub fn panel(ui: &mut egui::Ui, context: &mut crate::app::ZProberAppContext) {
                 .show_rows(ui, row_height, num_lines, |ui, row_range| {
                     for i in row_range {
                         let (line_rect, response) = ui.allocate_exact_size(
-                            vec2(ui.available_width(), row_height), Sense::click());
+                            vec2(ui.available_width(), row_height),
+                            Sense::click(),
+                        );
                         let galley = ui.painter().layout_job(source_view.generate_job(
                             source,
                             &probe_definitions,
@@ -677,26 +610,38 @@ pub fn panel(ui: &mut egui::Ui, context: &mut crate::app::ZProberAppContext) {
                             num_lines_digits,
                             &code_colors,
                         ));
-                        let mouse_pos = if response.hovered() { galley.cursor_from_pos(response.hover_pos().unwrap_or_default()- line_rect.min).index} else { CharIndex(0)};
-                        if mouse_pos > CharIndex(num_lines_digits) && let Some(signal) = source_view.signal_at_pos(i, mouse_pos - (num_lines_digits + 1)) {
+                        let mouse_pos = if response.hovered() {
+                            galley
+                                .cursor_from_pos(
+                                    response.hover_pos().unwrap_or_default() - line_rect.min,
+                                )
+                                .index
+                        } else {
+                            CharIndex(0)
+                        };
+                        if mouse_pos > CharIndex(num_lines_digits)
+                            && let Some(signal) =
+                                source_view.signal_at_pos(i, mouse_pos - (num_lines_digits + 1))
+                        {
                             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                             if response.clicked() {
                                 if let Some(probe) = probe_definitions.get(&signal) {
                                     context.source_view_signal_popup_name = Some(signal);
                                     context.source_view_signal_probe = probe.clone();
-                                    context.source_view_signal_popup_position = response.hover_pos().unwrap_or_default();
+                                    context.source_view_signal_popup_position =
+                                        response.hover_pos().unwrap_or_default();
                                 }
                             }
                         }
 
-                        ui.painter().galley(line_rect.min, galley, Color32::PLACEHOLDER);
+                        ui.painter()
+                            .galley(line_rect.min, galley, Color32::PLACEHOLDER);
                     }
                 });
-            
         }
     });
 
-        // display the popup to change a probe
+    // display the popup to change a probe
     let mut current_probe_selection = context.source_view_signal_probe.clone();
     let popup_signal_name = context.source_view_signal_popup_name.clone();
 
@@ -705,22 +650,10 @@ pub fn panel(ui: &mut egui::Ui, context: &mut crate::app::ZProberAppContext) {
         egui::Popup::from_response(&uiresponse.response)
             .open_bool(&mut open)
             .at_position(context.source_view_signal_popup_position)
-            .show(|ui| {
-                let options = [
-                    None,
-                    Some(ProbeChannel::EioIn),
-                    Some(ProbeChannel::EioOut),
-                    Some(ProbeChannel::Ela(0)),
-                ];
-                for option in options {
-                    ui.selectable_value(
-                        &mut current_probe_selection,
-                        option.clone(),
-                        super::signals::probe_channel_to_text(&option, context),
-                    );
-                }
-
-            });
+            .show(super::probes::probe_menu_contents(
+                &mut current_probe_selection,
+                context,
+            ));
 
         if current_probe_selection != context.source_view_signal_probe {
             // selection has been changed
@@ -738,5 +671,4 @@ pub fn panel(ui: &mut egui::Ui, context: &mut crate::app::ZProberAppContext) {
             context.source_view_signal_popup_name = None;
         }
     }
-
 }

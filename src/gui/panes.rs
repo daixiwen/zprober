@@ -7,12 +7,12 @@ use crate::gui::console;
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub enum Pane {
     Settings,
-    Text(String),
     Tracing,
     Console,
     Hierarchy,
     Signals,
     Source,
+    Probes,
 }
 
 /// display the complete tiles tree
@@ -50,12 +50,12 @@ impl<'a> egui_tiles::Behavior<Pane> for MyBehavior<'a> {
     fn tab_title_for_pane(&mut self, pane: &Pane) -> egui::WidgetText {
         match pane {
             Pane::Settings => "Settings".into(),
-            Pane::Text(text) => text.clone().into(),
             Pane::Tracing => "Tracing".into(),
             Pane::Console => "TCL".into(),
             Pane::Hierarchy => "Hierarchy".into(),
             Pane::Signals => "Signals".into(),
             Pane::Source => "Source".into(),
+            Pane::Probes => "Probes".into(),
         }
     }
 
@@ -68,9 +68,6 @@ impl<'a> egui_tiles::Behavior<Pane> for MyBehavior<'a> {
     ) -> egui_tiles::UiResponse {
         match pane {
             Pane::Settings => self.context.settings.ui(ui),
-            Pane::Text(text) => {
-                ui.text_edit_singleline(text);
-            }
             Pane::Tracing => {
                 egui_tracing::Logs::new(self.context.collector.clone()).ui(ui);
             }
@@ -90,10 +87,53 @@ impl<'a> egui_tiles::Behavior<Pane> for MyBehavior<'a> {
             Pane::Source => {
                 super::source::panel(ui, &mut self.context);
             }
+            Pane::Probes => {
+                super::probes::panel(ui, self.context);
+            }
         }
 
         Default::default()
     }
+}
+
+pub fn create_panes() -> egui_tiles::Tree<Pane> {
+    // create tiles tree
+    let mut tiles = egui_tiles::Tiles::default();
+
+    let hierarchy_pane = tiles.insert_pane(Pane::Hierarchy);
+    let hierarchy_tab = tiles.insert_tab_tile(vec![hierarchy_pane]);
+
+    let signal_pane = tiles.insert_pane(Pane::Signals);
+    let signal_tab = tiles.insert_tab_tile(vec![signal_pane]);
+
+    let left_column = tiles.insert_vertical_tile(vec![hierarchy_tab, signal_tab]);
+
+    let main_view_tabs = vec![
+        tiles.insert_pane(Pane::Source),
+        tiles.insert_pane(Pane::Probes),
+        tiles.insert_pane(Pane::Settings),
+    ];
+    let main_view = tiles.insert_tab_tile(main_view_tabs);
+
+    let console_tabs = vec![
+        tiles.insert_pane(Pane::Console),
+        tiles.insert_pane(Pane::Tracing),
+    ];
+    let console_view = tiles.insert_tab_tile(console_tabs);
+
+    let root_panes = vec![
+        left_column,
+        // column with main view
+        tiles.insert_vertical_tile(vec![
+            // main view
+            main_view,
+            // console
+            console_view,
+        ]),
+    ];
+
+    let root = tiles.insert_horizontal_tile(root_panes);
+    egui_tiles::Tree::new(egui::Id::unique("my_tree"), root, tiles)
 }
 
 fn display_project_hierarchy(

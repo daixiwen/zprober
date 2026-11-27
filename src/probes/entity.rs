@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 /// can compare each time the VHDL files are parsed again, and keep objects if we
 /// have some defined probes in entities that don't exist in the VHDL project any
 /// more
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Default, Serialize, Deserialize, Clone, Debug)]
 pub struct Entity {
     /// entity name
     pub label: String,

@@ -52,7 +52,10 @@ impl Data {
     }
 
     pub fn send_new_hierarchy(&self, hierarchy: Vec<super::project::ProjectEntry>) {
-        self.send_msg(MsgFromTcl::NewProjectHierarchy(hierarchy));
+        self.send_msg(MsgFromTcl::NewProjectHierarchy(
+            self.project_probes.clone(),
+            hierarchy,
+        ));
     }
 
     pub fn send_reset_layout(&self) {
@@ -77,6 +80,10 @@ impl Data {
     }
 
     pub fn send_update_probes(&self, instance_path: String, probes: Vec<crate::probes::Probe>) {
-        self.send_msg(MsgFromTcl::UpdateProbes(instance_path, probes));
+        self.send_msg(MsgFromTcl::UpdateProbes(
+            self.project_probes.clone(),
+            instance_path,
+            probes,
+        ));
     }
 }

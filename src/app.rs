@@ -56,6 +56,9 @@ pub struct ZProberAppContext {
     pub project_entries: Vec<crate::tcl::project::ProjectEntry>,
 
     #[serde(skip)]
+    pub project_probes: crate::probes::entity::Entity,
+
+    #[serde(skip)]
     pub selected_path: String,
 
     #[serde(skip)]
@@ -77,7 +80,7 @@ pub struct ZProberAppContext {
     pub source_view_signal_popup_position: egui::Pos2,
 
     #[serde(skip)]
-    pub source_view_signal_probe: Option<crate::probes::ProbeChannel>
+    pub source_view_signal_probe: Option<crate::probes::ProbeChannel>,
 }
 
 impl ZProberAppContext {
@@ -107,6 +110,7 @@ impl Default for ZProberAppContext {
             collector: Default::default(),
             tcl: Default::default(),
             project_entries: Default::default(),
+            project_probes: Default::default(),
             selected_path: Default::default(),
             signals: Default::default(),
             probes: Default::default(),
@@ -114,33 +118,15 @@ impl Default for ZProberAppContext {
             source_view: None,
             source_view_signal_popup_name: None,
             source_view_signal_popup_position: Default::default(),
-            source_view_signal_probe: None
+            source_view_signal_probe: None,
         }
     }
-}
-
-fn create_tree() -> egui_tiles::Tree<panes::Pane> {
-    // create tiles tree
-    let mut tiles = egui_tiles::Tiles::default();
-
-    let tabs: Vec<egui_tiles::TileId> = vec![
-        tiles.insert_pane(panes::Pane::Settings),
-        tiles.insert_pane(panes::Pane::Text("toto".to_owned())),
-        tiles.insert_pane(panes::Pane::Tracing),
-        tiles.insert_pane(panes::Pane::Console),
-        tiles.insert_pane(panes::Pane::Hierarchy),
-        tiles.insert_pane(panes::Pane::Signals),
-        tiles.insert_pane(panes::Pane::Source),
-    ];
-    let root: egui_tiles::TileId = tiles.insert_tab_tile(tabs);
-
-    egui_tiles::Tree::new(egui::Id::unique("my_tree"), root, tiles)
 }
 
 impl Default for ZProberApp {
     fn default() -> Self {
         ZProberApp {
-            tiles_tree: create_tree(),
+            tiles_tree: crate::gui::panes::create_panes(),
             context: Default::default(),
         }
     }
@@ -196,11 +182,13 @@ impl eframe::App for ZProberApp {
                     self.context.console.write(&format!("ERROR: {result}"));
                     self.context.console.prompt();
                 }
-                MsgFromTcl::NewProjectHierarchy(entries) => {
+                MsgFromTcl::NewProjectHierarchy(project_probes, entries) => {
+                    self.context.project_probes = project_probes;
                     self.context.project_entries = entries;
+                    self.context.selected_path = String::new();
                 }
                 MsgFromTcl::ResetGuiLayout => {
-                    self.tiles_tree = create_tree();
+                    self.tiles_tree = crate::gui::panes::create_panes();
                 }
                 MsgFromTcl::SelectInstance(new_path, signals, probes, source, source_view) => {
                     self.context.selected_path = new_path;
@@ -209,9 +197,10 @@ impl eframe::App for ZProberApp {
                     self.context.source = Some(source);
                     self.context.source_view = Some(source_view);
                 }
-                MsgFromTcl::UpdateProbes(probes_path, probes) => {
+                MsgFromTcl::UpdateProbes(project_probes, probes_path, probes) => {
                     if probes_path == self.context.selected_path {
                         tracing::event!(tracing::Level::DEBUG, probes_path, "updating probes");
+                        self.context.project_probes = project_probes;
                         self.context.probes = probes;
                     } else {
                         tracing::event!(
